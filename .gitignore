@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Environment Variables (Critical Security)
+.env
+
+# IDE Settings
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Database & Logs
+*.db
+*.sqlite3
+chroma_db/
+logs/
+*.log
+
+# Mac/Windows System files
+.DS_Store
+Thumbs.db
