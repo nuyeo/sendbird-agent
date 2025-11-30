@@ -22,14 +22,14 @@ Sendbird Chat API와 LangChain을 활용하여 구축한 **지능형 CS 에이�
 
 ```mermaid
 graph LR
-    User[User] -->|Send Message| Sendbird[Sendbird Platform]
-    Sendbird -->|Webhook (POST)| Agent[FastAPI Agent Server]
-    Agent -->|Retrieve Context| VectorDB[(Chroma DB)]
-    VectorDB -->|Context| Agent
-    Agent -->|Prompt + Context| LLM[OpenAI GPT]
-    LLM -->|Answer| Agent
-    Agent -->|Send API| Sendbird
-    Sendbird -->|Reply| User
+    User[User] -->|"Send Message"| Sendbird["Sendbird Platform"]
+    Sendbird -->|"Webhook (POST)"| Agent["FastAPI Agent Server"]
+    Agent -->|"Retrieve Context"| VectorDB[("Chroma DB")]
+    VectorDB -->|"Context"| Agent
+    Agent -->|"Prompt + Context"| LLM["OpenAI GPT"]
+    LLM -->|"Answer"| Agent
+    Agent -->|"Send API"| Sendbird
+    Sendbird -->|"Reply"| User
 ```
 
 ## ⚡️ Quick Start
