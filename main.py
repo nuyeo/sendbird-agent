@@ -1,36 +1,56 @@
+"""Main FastAPI application for Sendbird AI Agent."""
 import os
 import httpx
 import time
 import uuid
+import logging
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, BackgroundTasks
+from typing import Dict, Any, List
+from fastapi import FastAPI, Request, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.rag import initialize_rag, get_ai_response
 
-# 환경변수 로드
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
 load_dotenv()
 
 APP_ID = os.getenv("SENDBIRD_APP_ID")
 API_TOKEN = os.getenv("SENDBIRD_API_TOKEN")
 SENDBIRD_API_URL = f"https://api-{APP_ID}.sendbird.com/v3"
 
-# 📌 대시보드에 보여줄 로그 저장소 (In-Memory)
-chat_logs = []
+# In-memory chat logs storage
+chat_logs: List[Dict[str, Any]] = []
 
 
-# ✅ Lifespan: 서버 시작 시 AI 로딩
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 서버가 시작되었습니다. AI 모델을 로드합니다...")
-    initialize_rag()
+    """Application lifespan manager."""
+    logger.info("🚀 Starting server and initializing AI agent...")
+    try:
+        initialize_rag()
+        logger.info("✅ AI agent initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize AI agent: {e}")
+        raise
     yield
-    print("👋 서버가 종료됩니다.")
+    logger.info("👋 Shutting down server...")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Sendbird AI Agent",
+    description="Real-time AI customer support agent",
+    version="1.0.0",
+    lifespan=lifespan
+)
 
 # ✅ CORS 설정 (Next.js 3000번 포트에서 접속 허용)
 app.add_middleware(
@@ -42,7 +62,14 @@ app.add_middleware(
 )
 
 
-async def send_message_to_sendbird(channel_url: str, message: str):
+async def send_message_to_sendbird(channel_url: str, message: str) -> None:
+    """
+    Send AI response message to Sendbird channel.
+
+    Args:
+        channel_url: Sendbird channel URL
+        message: Message content to send
+    """
     headers = {
         "Content-Type": "application/json; charset=utf8",
         "Api-Token": API_TOKEN
@@ -52,79 +79,121 @@ async def send_message_to_sendbird(channel_url: str, message: str):
         "user_id": "ai_agent_bot",
         "message": message
     }
-    async with httpx.AsyncClient() as client:
-        url = f"{SENDBIRD_API_URL}/group_channels/{channel_url}/messages"
-        await client.post(url, json=payload, headers=headers)
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            url = f"{SENDBIRD_API_URL}/group_channels/{channel_url}/messages"
+            response = await client.post(url, json=payload, headers=headers)
+            response.raise_for_status()
+            logger.debug(f"Message sent to channel {channel_url}")
+    except httpx.HTTPError as e:
+        logger.error(f"Failed to send message to Sendbird: {e}")
 
 
 @app.post("/webhook")
-async def sendbird_webhook(request: Request, background_tasks: BackgroundTasks):
+async def sendbird_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks
+) -> Dict[str, str]:
+    """
+    Handle Sendbird webhook events for incoming messages.
+
+    Args:
+        request: FastAPI request object
+        background_tasks: Background task manager
+
+    Returns:
+        Status response dictionary
+    """
     data = await request.json()
     category = data.get("category")
 
     if category == "group_channel:message_send":
         sender = data.get("sender", {})
+        user_id = sender.get("user_id", "Unknown")
 
-        # 봇 자신이 보낸 메시지면 무시
-        if sender.get("user_id") == "ai_agent_bot":
+        # Ignore bot's own messages
+        if user_id == "ai_agent_bot":
             return {"status": "ok"}
 
         payload = data.get("payload", {})
         user_message = payload.get("message", "")
         channel_url = data.get("channel", {}).get("channel_url")
 
-        # user_id를 추출해서 AI에게 전달 (메모리 기능용)
-        user_id = sender.get("user_id", "Unknown")
+        logger.info(f"📩 Received message from {user_id}: {user_message[:50]}...")
 
-        print(f"📩 [질문] {user_message} (User: {user_id})")
-
-        # ⏱️ 시간 측정
+        # Measure AI response time
         start_time = time.time()
 
-        # 1. AI 답변 생성 (user_id를 함께 넘겨줘야 기억 가능)
-        ai_answer = get_ai_response(user_message, user_id=user_id)
+        try:
+            # Generate AI response with user context
+            ai_answer = get_ai_response(user_message, user_id=user_id)
+            duration = round((time.time() - start_time) * 1000)
 
-        duration = round((time.time() - start_time) * 1000)
-        print(f"🤖 [답변] {ai_answer}")
+            logger.info(f"🤖 Generated response in {duration}ms")
 
-        # 2. 로그 저장 (ID 및 피드백용 필드 포함)
-        log_id = str(uuid.uuid4())
-        log_entry = {
-            "id": log_id,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "user_id": user_id,
-            "question": user_message,
-            "answer": ai_answer,
-            "duration": duration,
-            "feedback": None
-        }
-        chat_logs.insert(0, log_entry)
+            # Store conversation log
+            log_entry = {
+                "id": str(uuid.uuid4()),
+                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "user_id": user_id,
+                "question": user_message,
+                "answer": ai_answer,
+                "duration": duration,
+                "feedback": None
+            }
+            chat_logs.insert(0, log_entry)
 
-        # 3. Sendbird 답장 전송
-        background_tasks.add_task(send_message_to_sendbird, channel_url, ai_answer)
+            # Send response asynchronously
+            background_tasks.add_task(
+                send_message_to_sendbird,
+                channel_url,
+                ai_answer
+            )
+
+        except Exception as e:
+            logger.error(f"Error processing message: {e}", exc_info=True)
 
     return {"status": "ok"}
 
 class FeedbackRequest(BaseModel):
-    feedback: str # "up" or "down"
+    """Request model for feedback."""
+    feedback: str = Field(..., description="Feedback type: 'up' or 'down'")
+
 
 @app.put("/api/logs/{log_id}/feedback")
-def update_feedback(log_id: str, request: FeedbackRequest):
+def update_feedback(log_id: str, request: FeedbackRequest) -> Dict[str, Any]:
     """
-    특정 로그에 좋아요(up)/싫어요(down) 피드백을 저장함
+    Update feedback for a specific conversation log.
+
+    Args:
+        log_id: UUID of the log entry
+        request: Feedback request
+
+    Returns:
+        Success response or error
     """
     for log in chat_logs:
         if log["id"] == log_id:
             log["feedback"] = request.feedback
+            logger.info(f"Feedback '{request.feedback}' added to log {log_id}")
             return {"status": "success", "log_id": log_id, "feedback": request.feedback}
-    return {"error": "Log not found"}
 
-# ✅ 대시보드가 데이터를 가져갈 API
+    logger.warning(f"Log not found: {log_id}")
+    raise HTTPException(status_code=404, detail="Log not found")
+
+
 @app.get("/api/logs")
-def get_chat_logs():
-    return {"logs": chat_logs}
+def get_chat_logs() -> Dict[str, Any]:
+    """
+    Retrieve all conversation logs.
+
+    Returns:
+        Dictionary containing logs list and total count
+    """
+    return {"logs": chat_logs, "total": len(chat_logs)}
 
 
 @app.get("/")
-def health_check():
-    return {"status": "Server is running"}
+def health_check() -> Dict[str, str]:
+    """Health check endpoint."""
+    return {"status": "Server is running", "version": "1.0.0"}
