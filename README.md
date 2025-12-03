@@ -34,36 +34,75 @@ graph LR
 
 ## ⚡️ Quick Start
 
-### 1\. Prerequisites
+### 1. Prerequisites
 
-  - Python 3.9+
-  - Sendbird Application ID & API Token
-  - OpenAI API Key
+- Python 3.9+
+- Sendbird Application ID & API Token
+- OpenAI API Key
 
-### 2\. Installation
+### 2. Installation
 
 ```bash
 # Clone the repository
-git clone [https://github.com/YOUR_USERNAME/sendbird-ai-agent.git](https://github.com/YOUR_USERNAME/sendbird-ai-agent.git)
+git clone https://github.com/YOUR_USERNAME/sendbird-ai-agent.git
+cd sendbird-ai-agent
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 
 # Install dependencies
 pip install -r requirements.txt
 ```
 
-### 3\. Environment Setup
+### 3. Environment Setup
 
-Create a `.env` file in the root directory:
-
-```ini
-SENDBIRD_APP_ID="your_app_id"
-SENDBIRD_API_TOKEN="your_api_token"
-OPENAI_API_KEY="sk-..."
-```
-
-### 4\. Run Server
+Copy `.env.example` to `.env` and fill in your credentials:
 
 ```bash
-uvicorn main:app --reload
+cp .env.example .env
+```
+
+Edit `.env` file:
+```ini
+SENDBIRD_APP_ID=your_sendbird_app_id
+SENDBIRD_API_TOKEN=your_sendbird_api_token
+OPENAI_API_KEY=sk-your_openai_api_key
+```
+
+### 4. Run Backend Server
+
+```bash
+# Start FastAPI server
+uvicorn main:app --reload --port 8001
+
+# Or with custom host/port
+uvicorn main:app --host 0.0.0.0 --port 8001
+```
+
+The API will be available at `http://localhost:8001`
+
+### 5. Run Dashboard (Optional)
+
+```bash
+cd dashboard
+npm install
+npm run dev
+```
+
+The dashboard will be available at `http://localhost:3000`
+
+## 📚 API Endpoints
+
+- `GET /` - Health check
+- `POST /webhook` - Sendbird webhook handler
+- `GET /api/logs` - Get all conversation logs
+- `PUT /api/logs/{log_id}/feedback` - Update feedback for a log
+
+## 🧪 Running Tests
+
+```bash
+pytest tests/
 ```
 
 ## 📝 License
