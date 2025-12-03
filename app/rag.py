@@ -8,11 +8,10 @@ from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
-from app.tools import search_order_status, refund_calculator, cancel_order, transfer_to_human
 from dotenv import load_dotenv
 
 # 도구들 가져오기
-from app.tools import search_order_status, refund_calculator, cancel_order
+from app.tools import search_order_status, refund_calculator, cancel_order, transfer_to_human
 
 load_dotenv()
 
@@ -26,7 +25,7 @@ def initialize_rag():
     db_path = os.path.join(BASE_DIR, "data", "chroma_db")
     file_path = os.path.join(BASE_DIR, "data", "faq.txt")
 
-    # 1. 벡터 DB 로드 (기존과 동일)
+    # 1. 벡터 DB 로드
     embeddings = OpenAIEmbeddings()
     if os.path.exists(db_path) and os.listdir(db_path):
         print("💾 [AI Init] 기존 벡터 DB를 불러옵니다...")
@@ -42,7 +41,7 @@ def initialize_rag():
         texts = text_splitter.split_documents(documents)
         db = Chroma.from_documents(texts, embeddings, persist_directory=db_path)
 
-    # 2. Retriever 도구 생성 (설명 구체화)
+    # 2. Retriever 도구 생성
     retriever = db.as_retriever()
     retriever_tool = create_retriever_tool(
         retriever,
@@ -56,51 +55,45 @@ def initialize_rag():
     # 4. LLM 설정
     llm = ChatOpenAI(model="gpt-3.5-turbo", temperature=0)
 
-    # 📌 [핵심] 프롬프트 엔지니어링 (Hallucination 제어 & 출처 표기)
-    # 시스템 프롬프트에 '페르소나'와 '제약조건'을 강력하게 겁니다.
+    # 📌 [수정 완료] 중괄호({})를 모두 제거한 안전한 프롬프트
     system_prompt = """
-        You are a helpful and precise Customer Support Agent for 'Sendbird Store'.
+    You are a helpful and precise Customer Support Agent for 'Sendbird Store'.
 
-        Your Role:
-        1. Answer user questions based ONLY on the information provided by the tools.
-        2. Do NOT use your own outside knowledge.
+    Your Role:
+    1. Answer user questions based ONLY on the information provided by the tools.
+    2. Do NOT use your own outside knowledge.
 
-        Decision Protocol (IMPORTANT):
-        1. **General Policy Questions**: ALWAYS use 'search_faq' first.
-        2. **Specific Order Requests**:
-           - IF the Order ID is missing, ask the user for it.
-           - YOU MUST FIRST use 'search_order_status' to get details.
+    Decision Protocol (IMPORTANT):
+    1. General Policy Questions: ALWAYS use 'search_faq' first.
+    2. Specific Order Requests:
+       - IF the Order ID is missing, ask the user for it.
+       - YOU MUST FIRST use 'search_order_status' to get details.
 
-        Tone & Logic Guidelines (CRITICAL):
-        - **Avoid unnecessary apologies.** Do NOT say "Sorry" or "죄송합니다" if the user's request is possible. Only apologize when you actually reject a request or make a mistake.
-        - **Logic Check for Cancellation:**
-          - IF status is '상품 준비 중' (Preparing) AND user asks "Can I cancel?":
-            - SAY: "네, 현재 '상품 준비 중' 상태이므로 취소가 가능합니다. 취소해 드릴까요?"
-            - Do NOT explain the rule ("It is only possible when...") if the condition is already met. Just confirm it.
-          - IF status is '배송 중' (Shipping) or '배송 완료' (Delivered):
-            - SAY: "죄송합니다. 현재 '{status}' 상태라 취소가 불가능합니다."
+    Tone and Logic Guidelines (CRITICAL):
+    - Avoid unnecessary apologies. Do NOT say "Sorry" or "죄송합니다" if the user's request is possible.
+    - Logic Check for Cancellation:
+      - IF status is '상품 준비 중' (Preparing) AND user asks "Can I cancel?":
+        - SAY: "네, 현재 '상품 준비 중' 상태이므로 취소가 가능합니다. 취소해 드릴까요?"
+      - IF status is '배송 중' (Shipping) or '배송 완료' (Delivered):
+        - SAY: "죄송합니다. 현재 배송 상태에서는 취소가 불가능합니다." 
 
-        Strict Response Guidelines:
-        - NEVER mention technical terms (e.g., 'search_order_status', tool names).
-        - Speak naturally like a human agent.
-        - Use Korean.
-        """
+    Strict Response Guidelines:
+    - NEVER mention technical terms.
+    - Speak naturally like a human agent.
+    - Use Korean.
+    """
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
-        ("placeholder", "{chat_history}"),  # <--- 여기가 기억이 들어갈 자리
+        ("placeholder", "{chat_history}"),
         ("human", "{input}"),
         ("placeholder", "{agent_scratchpad}"),
     ])
 
-    # 5. Agent 생성
     agent = create_tool_calling_agent(llm, tools, prompt)
-
-    # 6. 실행기 생성
     agent_executor_base = AgentExecutor(agent=agent, tools=tools, verbose=True)
 
-    # 7. 메모리 기능 래핑 (Session ID별로 대화 기억)
-    # 실제로는 Redis 등을 써야 하지만, 데모용으로 메모리(InMemory) 사용
+    # 5. 메모리 기능 (Session ID별로 대화 기억)
     chat_history_store = {}
 
     def get_session_history(session_id: str):
@@ -108,7 +101,6 @@ def initialize_rag():
             chat_history_store[session_id] = InMemoryChatMessageHistory()
         return chat_history_store[session_id]
 
-    global agent_executor
     agent_executor = RunnableWithMessageHistory(
         agent_executor_base,
         get_session_history,
@@ -116,7 +108,7 @@ def initialize_rag():
         history_messages_key="chat_history",
     )
 
-    print("✅ [AI Init] Agent가 준비되었습니다. (Custom Prompt Applied)")
+    print("✅ [AI Init] Agent Ready (with Memory & Handoff)")
 
 
 def get_ai_response(user_query: str, user_id: str = "default") -> str:
@@ -124,7 +116,6 @@ def get_ai_response(user_query: str, user_id: str = "default") -> str:
         return "AI가 준비되지 않았습니다."
 
     try:
-        # session_id를 user_id로 설정하여 유저별로 기억을 따로 관리
         response = agent_executor.invoke(
             {"input": user_query},
             config={"configurable": {"session_id": user_id}}
@@ -132,4 +123,5 @@ def get_ai_response(user_query: str, user_id: str = "default") -> str:
         return response["output"]
     except Exception as e:
         print(f"🚨 Error: {e}")
-        return "죄송합니다. 오류가 발생했습니다."
+        # 에러가 나면 간단한 메시지 리턴 (서버 안 죽게)
+        return "죄송합니다. 잠시 후 다시 시도해 주세요."
