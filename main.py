@@ -1,4 +1,6 @@
 """Main FastAPI application for Sendbird AI Agent."""
+__version__ = "1.0.0"
+
 import os
 import httpx
 import time
