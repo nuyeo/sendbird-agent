@@ -39,8 +39,9 @@ cd dashboard && npm run dev
 
 ## 브랜치 전략
 
-Phase별 브랜치에서 작업 후 main에 병합:
+**main 브랜치에 직접 커밋하지 마세요.** 새로운 기능이나 변경사항은 반드시 알맞은 브랜치를 생성/checkout하여 작업하고, 작업이 완료되면 PR을 올립니다.
 
+Phase별 브랜치:
 ```
 v2/refactor-structure  →  main  (Phase 1)
 v2/prompt-external     →  main  (Phase 2)
@@ -49,6 +50,8 @@ v2/observability       →  main  (Phase 4)
 v2/prompt-cicd         →  main  (Phase 5)
 v2/cloud-deploy        →  main  (Phase 5)
 ```
+
+일반 작업 브랜치 네이밍: `{type}/{description}` (예: `feat/add-login`, `fix/webhook-error`)
 
 ## 코드 스타일 핵심 규칙
 
