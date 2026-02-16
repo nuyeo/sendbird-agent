@@ -26,7 +26,8 @@ from app.prompt.loader import load_prompt
 
 logger = logging.getLogger(__name__)
 
-agent_executor = None
+agent_executor: RunnableWithMessageHistory | None = None
+agent_executor_base: AgentExecutor | None = None
 
 # 세션별 대화 히스토리 저장소
 chat_history_store: dict[str, InMemoryChatMessageHistory] = {}
@@ -41,7 +42,7 @@ def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
 
 def initialize_rag() -> None:
     """RAG 시스템과 에이전트를 초기화합니다."""
-    global agent_executor
+    global agent_executor, agent_executor_base
 
     base_dir = Path(__file__).resolve().parent.parent.parent
     db_path = str(base_dir / "data" / "chroma_db")
@@ -90,12 +91,14 @@ def initialize_rag() -> None:
     # 5. 프롬프트 로드 (YAML 외부 파일)
     prompt_config = load_prompt("cs_agent_v1")
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", prompt_config.system_prompt),
-        ("placeholder", "{chat_history}"),
-        ("human", "{input}"),
-        ("placeholder", "{agent_scratchpad}"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", prompt_config.system_prompt),
+            ("placeholder", "{chat_history}"),
+            ("human", "{input}"),
+            ("placeholder", "{agent_scratchpad}"),
+        ]
+    )
 
     agent = create_tool_calling_agent(llm, tools, prompt)
     agent_executor_base = AgentExecutor(agent=agent, tools=tools, verbose=True)

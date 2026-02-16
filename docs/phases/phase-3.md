@@ -10,14 +10,19 @@ Golden QA Set과 자동 평가 스크립트를 구축하여, 프롬프트나 코
 
 ## 요구사항
 
-- [ ] `eval/golden_qa.json` 작성 (최소 20개 테스트 케이스)
-- [ ] `eval/run_eval.py` 평가 실행 스크립트 구현
-- [ ] `eval/check_threshold.py` 품질 임계치 검사 스크립트
+- [x] `eval/golden_qa.json` 작성 (최소 20개 테스트 케이스)
+- [x] `eval/run_eval.py` 평가 실행 스크립트 구현
+- [x] `eval/check_threshold.py` 품질 임계치 검사 스크립트
 
 ## 기술적 결정사항
 
 - 평가 프레임워크: 자체 구현 (추후 ragas 연동 가능)
 - 테스트 케이스 포맷: JSON
+- 평가 방식:
+  - **tool_accuracy**: AgentExecutor의 intermediate_steps에서 호출된 tool 이름 확인
+  - **faithfulness/relevance**: LLM-as-Judge 패턴 (GPT가 reference_answer 대비 응답 품질 채점)
+- tool_calling 케이스는 MOCK_DB(A101, B202, C303)에 맞춰 작성
+- 에이전트 호출 시 RAG 초기화가 필요하므로 `initialize_rag()` 선행 호출
 
 ## Golden QA Set 구조
 
@@ -27,8 +32,8 @@ Golden QA Set과 자동 평가 스크립트를 구축하여, 프롬프트나 코
     "id": "TC-001",
     "category": "faq",
     "user_query": "환불 정책이 어떻게 되나요?",
-    "expected_tool": null,
-    "reference_answer": "구매 후 7일 이내 미사용 시 전액 환불 가능합니다.",
+    "expected_tool": "search_faq",
+    "reference_answer": "단순 변심에 의한 환불은 제품 수령 후 7일 이내에만 가능합니다.",
     "eval_criteria": ["faithfulness", "relevance"]
   },
   {
@@ -82,3 +87,4 @@ if __name__ == "__main__":
 - Golden QA Set 20개 이상 작성
 - `python eval/run_eval.py`로 평가 실행 가능
 - 카테고리별 점수 리포트 출력
+- `ruff check` 통과

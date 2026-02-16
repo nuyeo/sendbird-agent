@@ -17,6 +17,9 @@ env/
 *.swp
 *.swo
 
+# Eval Results (generated at runtime)
+eval/results.json
+
 # Database & Logs
 *.db
 *.sqlite3
