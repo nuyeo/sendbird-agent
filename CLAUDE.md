@@ -43,6 +43,7 @@ cd dashboard && npm run dev
 
 브랜치 네이밍: `{type}/{description}` — 커밋 컨벤션 prefix와 동일한 type을 사용합니다.
 
+Phase별 브랜치:
 ```
 refactor/modular-architecture  →  main
 feat/prompt-yaml-loader        →  main
@@ -51,6 +52,8 @@ feat/observability             →  main
 ci/prompt-quality-gate         →  main
 feat/cloud-deploy              →  main
 ```
+
+일반 작업 브랜치 네이밍: `{type}/{description}` (예: `feat/add-login`, `fix/webhook-error`)
 
 ## 코드 스타일 핵심 규칙
 
