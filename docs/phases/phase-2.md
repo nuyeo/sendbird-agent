@@ -16,11 +16,11 @@
 
 ## 요구사항
 
-- [ ] 기존 코드에서 하드코딩된 프롬프트 추출
-- [ ] `prompts/cs_agent_v1.yaml` 생성
-- [ ] `app/prompt/loader.py` 구현 (YAML 프롬프트 로더 + Pydantic 검증)
-- [ ] `app/agent/rag.py`에서 로더를 사용하도록 전환
-- [ ] 프롬프트 로더 단위 테스트 추가
+- [x] 기존 코드에서 하드코딩된 프롬프트 추출
+- [x] `prompts/cs_agent_v1.yaml` 생성
+- [x] `app/prompt/loader.py` 구현 (YAML 프롬프트 로더 + Pydantic 검증)
+- [x] `app/agent/rag.py`에서 로더를 사용하도록 전환
+- [x] 프롬프트 로더 단위 테스트 추가
 
 ### 검토 후 변경된 사항
 
@@ -62,7 +62,7 @@ def load_prompt(name: str) -> PromptConfig:
 
 ## 관련 파일
 
-- `app/agent/rag.py` — 시스템 프롬프트가 하드코딩된 곳 (89-114줄)
+- `app/agent/rag.py` — `load_prompt("cs_agent_v1")`으로 프롬프트 로드
 - `app/prompt/loader.py` — 신규 생성
 - `prompts/cs_agent_v1.yaml` — 신규 생성
 

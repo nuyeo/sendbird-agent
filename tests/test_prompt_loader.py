@@ -1,5 +1,7 @@
 """프롬프트 로더 단위 테스트."""
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -33,3 +35,24 @@ def test_prompt_config_validation() -> None:
     """필수 필드 누락 시 ValidationError 발생 확인."""
     with pytest.raises(ValidationError):
         PromptConfig(version="1.0.0", description="test")  # system_prompt 누락
+
+
+def test_load_prompt_path_traversal() -> None:
+    """경로 탐색 공격 시도 시 ValueError 발생 확인."""
+    with pytest.raises(ValueError, match="유효하지 않은 프롬프트 이름"):
+        load_prompt("../../etc/passwd")
+
+
+def test_load_prompt_empty_yaml(tmp_path: Path) -> None:
+    """빈 YAML 파일 로드 시 ValueError 발생 확인."""
+    import app.prompt.loader as loader_module
+
+    original = loader_module._BASE_DIR
+    loader_module._BASE_DIR = tmp_path
+    (tmp_path / "prompts").mkdir()
+    (tmp_path / "prompts" / "empty.yaml").write_text("")
+    try:
+        with pytest.raises(ValueError, match="올바른 YAML 매핑이 아닙니다"):
+            load_prompt("empty")
+    finally:
+        loader_module._BASE_DIR = original
