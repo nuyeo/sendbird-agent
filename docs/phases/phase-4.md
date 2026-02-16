@@ -31,22 +31,28 @@ structlog 도입으로 구조화된 로깅을 구현하고, 기존 대시보드�
 ## structlog 설정 참고
 
 ```python
-# app/observability/logger.py
+# app/observability/logger.py (간략화된 예시)
 import structlog
-import uuid
 
 structlog.configure(
     processors=[
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
         structlog.processors.JSONRenderer(),
     ],
+    wrapper_class=structlog.make_filtering_bound_logger(logging.INFO),
+    logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
 )
 
-def get_logger():
-    return structlog.get_logger()
+def get_logger(**kwargs) -> FilteringBoundLogger:
+    return structlog.get_logger(**kwargs)
 
-def create_request_context() -> dict:
-    return {"request_id": str(uuid.uuid4())}
+def bind_request_context(request_id: str) -> None:
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(request_id=request_id)
 ```
 
 ## 대시보드 연동

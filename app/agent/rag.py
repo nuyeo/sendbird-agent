@@ -132,6 +132,7 @@ def get_ai_response(user_query: str, user_id: str = "default") -> dict[str, Any]
             {"input": user_query},
             config={"configurable": {"session_id": user_id}},
         )
+        # TODO: LangChain callback을 통한 token_usage 추출 구현
         return {"output": response["output"], "token_usage": None}
     except Exception:
         logger.exception("AI 응답 생성 중 오류")

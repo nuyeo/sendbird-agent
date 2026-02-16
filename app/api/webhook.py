@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,7 @@ logger = get_logger()
 router = APIRouter()
 
 # 인메모리 대화 로그 저장소
+MAX_CHAT_LOGS = 1000
 chat_logs: list[dict[str, Any]] = []
 
 
@@ -33,7 +34,7 @@ class FeedbackRequest(BaseModel):
 async def sendbird_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-) -> dict[str, str]:
+) -> Response:
     """Sendbird 웹훅 이벤트를 처리합니다.
 
     Args:
@@ -41,7 +42,7 @@ async def sendbird_webhook(
         background_tasks: 백그라운드 태스크 매니저.
 
     Returns:
-        상태 응답 딕셔너리.
+        상태 응답 딕셔너리 또는 에러 JSONResponse.
     """
     request_id = generate_request_id()
     bind_request_context(request_id)
@@ -100,6 +101,8 @@ async def sendbird_webhook(
                 "feedback": None,
             }
             chat_logs.insert(0, log_entry)
+            if len(chat_logs) > MAX_CHAT_LOGS:
+                chat_logs.pop()
 
             # 비동기로 응답 전송
             background_tasks.add_task(send_message, channel_url, ai_answer)
