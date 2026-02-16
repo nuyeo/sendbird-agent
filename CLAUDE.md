@@ -11,7 +11,7 @@ Sendbird Chat API + LangChain 기반 지능형 CS 에이전트 (RAG + Tool Calli
 
 ```bash
 # 서버 실행
-uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
 # 테스트
 pytest
