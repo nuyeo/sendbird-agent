@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
+from typing import Any
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.tools.retriever import create_retriever_tool
@@ -22,9 +22,10 @@ from app.agent.tools import (
     transfer_to_human,
 )
 from app.config import settings
+from app.observability.logger import get_logger
 from app.prompt.loader import load_prompt
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 agent_executor: RunnableWithMessageHistory | None = None
 agent_executor_base: AgentExecutor | None = None
@@ -113,7 +114,7 @@ def initialize_rag() -> None:
     logger.info("Agent Ready (with Memory & Handoff)")
 
 
-def get_ai_response(user_query: str, user_id: str = "default") -> str:
+def get_ai_response(user_query: str, user_id: str = "default") -> dict[str, Any]:
     """사용자 쿼리에 대한 AI 응답을 생성합니다.
 
     Args:
@@ -121,17 +122,17 @@ def get_ai_response(user_query: str, user_id: str = "default") -> str:
         user_id: 사용자 식별자 (세션 관리용).
 
     Returns:
-        AI 응답 문자열.
+        {"output": str, "token_usage": dict | None} 형태의 딕셔너리.
     """
     if agent_executor is None:
-        return "AI가 준비되지 않았습니다."
+        return {"output": "AI가 준비되지 않았습니다.", "token_usage": None}
 
     try:
         response = agent_executor.invoke(
             {"input": user_query},
             config={"configurable": {"session_id": user_id}},
         )
-        return response["output"]
+        return {"output": response["output"], "token_usage": None}
     except Exception:
         logger.exception("AI 응답 생성 중 오류")
-        return "죄송합니다. 잠시 후 다시 시도해 주세요."
+        return {"output": "죄송합니다. 잠시 후 다시 시도해 주세요.", "token_usage": None}

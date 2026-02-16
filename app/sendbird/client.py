@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import logging
-
 import httpx
 
 from app.config import settings
+from app.observability.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 SENDBIRD_API_URL = f"https://api-{settings.sendbird_app_id}.sendbird.com/v3"
 
@@ -34,6 +33,6 @@ async def send_message(channel_url: str, message: str) -> None:
             url = f"{SENDBIRD_API_URL}/group_channels/{channel_url}/messages"
             response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
-            logger.debug(f"Message sent to channel {channel_url}")
+            logger.debug("Sendbird 메시지 전송 완료", channel_url=channel_url)
     except httpx.HTTPError:
-        logger.exception("Failed to send message to Sendbird")
+        logger.exception("Sendbird 메시지 전송 실패", channel_url=channel_url)
