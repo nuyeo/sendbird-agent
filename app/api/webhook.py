@@ -3,24 +3,24 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import time
-import uuid
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.agent.rag import get_ai_response
+from app.observability.logger import bind_request_context, generate_request_id, get_logger
 from app.sendbird.client import send_message
 
-logger = logging.getLogger(__name__)
+logger = get_logger()
 
 router = APIRouter()
 
 # 인메모리 대화 로그 저장소
+MAX_CHAT_LOGS = 1000
 chat_logs: list[dict[str, Any]] = []
 
 
@@ -34,7 +34,7 @@ class FeedbackRequest(BaseModel):
 async def sendbird_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
-) -> dict[str, str]:
+) -> Response:
     """Sendbird 웹훅 이벤트를 처리합니다.
 
     Args:
@@ -42,11 +42,15 @@ async def sendbird_webhook(
         background_tasks: 백그라운드 태스크 매니저.
 
     Returns:
-        상태 응답 딕셔너리.
+        상태 응답 딕셔너리 또는 에러 JSONResponse.
     """
+    request_id = generate_request_id()
+    bind_request_context(request_id)
+
     try:
         data = await request.json()
     except Exception:
+        logger.warning("잘못된 JSON 요청 수신")
         return JSONResponse(status_code=400, content={"detail": "Invalid JSON body"})
 
     category = data.get("category")
@@ -63,36 +67,48 @@ async def sendbird_webhook(
         user_message = payload.get("message", "")
         channel_url = data.get("channel", {}).get("channel_url")
 
-        logger.info(f"Received message from {user_id}: {user_message[:50]}...")
+        logger.info(
+            "사용자 메시지 수신",
+            user_id=user_id,
+            message_preview=user_message[:50],
+        )
 
         # AI 응답 시간 측정
         start_time = time.time()
 
         try:
-            ai_answer = await asyncio.to_thread(
-                get_ai_response, user_message, user_id
-            )
-            duration = round((time.time() - start_time) * 1000)
+            result = await asyncio.to_thread(get_ai_response, user_message, user_id)
+            ai_answer = result["output"]
+            token_usage = result["token_usage"]
+            latency_ms = round((time.time() - start_time) * 1000)
 
-            logger.info(f"Generated response in {duration}ms")
+            logger.info(
+                "AI 응답 생성 완료",
+                user_id=user_id,
+                latency_ms=latency_ms,
+                token_usage=token_usage,
+            )
 
             # 대화 로그 저장
             log_entry = {
-                "id": str(uuid.uuid4()),
+                "id": request_id,
                 "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "user_id": user_id,
                 "question": user_message,
                 "answer": ai_answer,
-                "duration": duration,
+                "latency_ms": latency_ms,
+                "token_usage": token_usage,
                 "feedback": None,
             }
             chat_logs.insert(0, log_entry)
+            if len(chat_logs) > MAX_CHAT_LOGS:
+                chat_logs.pop()
 
             # 비동기로 응답 전송
             background_tasks.add_task(send_message, channel_url, ai_answer)
 
-        except Exception as e:
-            logger.error(f"Error processing message: {e}", exc_info=True)
+        except Exception:
+            logger.exception("메시지 처리 중 오류 발생", user_id=user_id)
 
     return {"status": "ok"}
 
@@ -111,10 +127,14 @@ def update_feedback(log_id: str, request: FeedbackRequest) -> dict[str, Any]:
     for log in chat_logs:
         if log["id"] == log_id:
             log["feedback"] = request.feedback
-            logger.info(f"Feedback '{request.feedback}' added to log {log_id}")
+            logger.info(
+                "피드백 추가",
+                log_id=log_id,
+                feedback=request.feedback,
+            )
             return {"status": "success", "log_id": log_id, "feedback": request.feedback}
 
-    logger.warning(f"Log not found: {log_id}")
+    logger.warning("로그를 찾을 수 없음", log_id=log_id)
     raise HTTPException(status_code=404, detail="Log not found")
 
 

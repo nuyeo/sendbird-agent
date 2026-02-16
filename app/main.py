@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -12,26 +11,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.agent.rag import initialize_rag
 from app.api.health import router as health_router
 from app.api.webhook import router as webhook_router
+from app.observability.logger import get_logger, setup_logging
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
-logger = logging.getLogger(__name__)
+setup_logging()
+logger = get_logger()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """애플리케이션 라이프사이클 관리."""
-    logger.info("Starting server and initializing AI agent...")
+    logger.info("서버 시작 및 AI 에이전트 초기화 중...")
     try:
         initialize_rag()
-        logger.info("AI agent initialized successfully")
+        logger.info("AI 에이전트 초기화 완료")
     except Exception:
-        logger.exception("Failed to initialize AI agent")
+        logger.exception("AI 에이전트 초기화 실패")
         raise
     yield
-    logger.info("Shutting down server...")
+    logger.info("서버 종료 중...")
 
 
 app = FastAPI(
