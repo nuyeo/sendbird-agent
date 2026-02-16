@@ -39,8 +39,9 @@ cd dashboard && npm run dev
 
 ## 브랜치 전략
 
-Phase별 브랜치에서 작업 후 main에 병합:
+**main 브랜치에 직접 커밋하지 마세요.** 새로운 기능이나 변경사항은 반드시 알맞은 브랜치를 생성/checkout하여 작업하고, 작업이 완료되면 PR을 올립니다.
 
+Phase별 브랜치:
 ```
 v2/refactor-structure  →  main  (Phase 1)
 v2/prompt-external     →  main  (Phase 2)
@@ -50,14 +51,28 @@ v2/prompt-cicd         →  main  (Phase 5)
 v2/cloud-deploy        →  main  (Phase 5)
 ```
 
+일반 작업 브랜치 네이밍: `{type}/{description}` (예: `feat/add-login`, `fix/webhook-error`)
+
 ## 코드 스타일 핵심 규칙
 
 - Python: Type Hint 필수, Ruff 포맷팅 (line-length: 100), Google Docstring
 - 주석/docstring은 한국어 사용
 - 커밋: `feat:`, `refactor:`, `fix:`, `docs:`, `test:`, `ci:` prefix 사용
 
+## 개발 프로세스
+
+각 Phase 또는 기능 개발 시작 전에 반드시 아래 절차를 따릅니다:
+
+1. **요구사항 검증**: 문서에 적힌 내용이 현재 코드 상태와 일치하는지 확인
+2. **의문 제기**: 각 요구사항에 대해 "왜 이게 필요한가?" 질문. YAGNI 원칙 적용
+3. **비즈니스 성과 검토**: 이 작업이 가져올 구체적인 가치 정리
+4. **문서 개선**: 검토 결과를 문서에 반영한 후 작업 시작
+5. **브랜치 생성 → 작업 → PR**: main 직접 커밋 금지
+
 ## 주의사항
 
 - `.env` 파일은 절대 커밋하지 마세요 (.gitignore에 포함됨)
 - API 키나 시크릿을 코드에 하드코딩하지 마세요
 - `requirements.txt` 변경 시 가상환경에서 테스트 후 커밋
+- 미래 Phase의 코드/디렉토리를 현재 Phase에서 미리 만들지 마세요
+- 현재 사용하지 않는 의존성을 미리 추가하지 마세요
