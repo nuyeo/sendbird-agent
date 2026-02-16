@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+
 from langchain.tools import tool
 
 # 📌 가짜 DB (구매 날짜 추가 - 오늘 날짜 기준으로 동적 생성)
@@ -74,7 +75,7 @@ def cancel_order(order_id: str) -> str:
 def refund_calculator(price: int, days_passed: int) -> str:
     """
     상품 가격(price)과 경과일(days_passed)을 받아 환불액을 계산합니다.
-    이 함수를 호출하기 전에 반드시 search_order_status를 통해 정확한 가격과 경과일을 확인해야 합니다.
+    호출 전에 반드시 search_order_status로 정확한 가격과 경과일을 확인해야 합니다.
     """
     print(f"💰 [Tool: 계산] 가격: {price}원, 경과일: {days_passed}일")
 
@@ -96,4 +97,7 @@ def transfer_to_human(reason: str) -> str:
     print(f"🚨 [Tool: Handoff] 상담원 연결 요청 발생! 사유: {reason}")
     # 실제로는 여기서 Sendbird Desk API를 호출하여 티켓을 생성해야 합니다.
     # 이번 프로젝트에서는 '연결 요청됨' 상태를 반환하여 대시보드에 표시합니다.
-    return "상담원 연결 요청이 시스템에 접수되었습니다. 잠시만 기다려주시면 담당자가 채팅방에 입장할 것입니다."
+    return (
+        "상담원 연결 요청이 시스템에 접수되었습니다. "
+        "잠시만 기다려주시면 담당자가 채팅방에 입장할 것입니다."
+    )

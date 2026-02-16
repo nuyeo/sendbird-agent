@@ -11,7 +11,7 @@ Sendbird Chat API + LangChain 기반 지능형 CS 에이전트 (RAG + Tool Calli
 
 ```bash
 # 서버 실행
-uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
 
 # 테스트
 pytest
@@ -41,14 +41,16 @@ cd dashboard && npm run dev
 
 **main 브랜치에 직접 커밋하지 마세요.** 새로운 기능이나 변경사항은 반드시 알맞은 브랜치를 생성/checkout하여 작업하고, 작업이 완료되면 PR을 올립니다.
 
+브랜치 네이밍: `{type}/{description}` — 커밋 컨벤션 prefix와 동일한 type을 사용합니다.
+
 Phase별 브랜치:
 ```
-v2/refactor-structure  →  main  (Phase 1)
-v2/prompt-external     →  main  (Phase 2)
-v2/eval-pipeline       →  main  (Phase 3)
-v2/observability       →  main  (Phase 4)
-v2/prompt-cicd         →  main  (Phase 5)
-v2/cloud-deploy        →  main  (Phase 5)
+refactor/modular-architecture  →  main
+feat/prompt-yaml-loader        →  main
+feat/eval-pipeline             →  main
+feat/observability             →  main
+ci/prompt-quality-gate         →  main
+feat/cloud-deploy              →  main
 ```
 
 일반 작업 브랜치 네이밍: `{type}/{description}` (예: `feat/add-login`, `fix/webhook-error`)
@@ -68,6 +70,11 @@ v2/cloud-deploy        →  main  (Phase 5)
 3. **비즈니스 성과 검토**: 이 작업이 가져올 구체적인 가치 정리
 4. **문서 개선**: 검토 결과를 문서에 반영한 후 작업 시작
 5. **브랜치 생성 → 작업 → PR**: main 직접 커밋 금지
+
+## 커밋/PR 규칙
+
+- 커밋/PR 제목에 phase 번호를 직접 기입하지 마세요 (내부 개발 편의용 넘버링이므로 레포에 노출 금지)
+- 브랜치명에 `v2/` 같은 내부 버전 prefix를 사용하지 마세요. `{type}/{description}` 형식을 사용합니다.
 
 ## 주의사항
 

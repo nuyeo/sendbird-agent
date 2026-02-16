@@ -14,22 +14,22 @@ ci: CI/CD 설정 변경
 예시:
 ```
 refactor: separate RAG pipeline into app/agent/rag.py
-feat: add YAML prompt loader (Phase 3.5)
+feat: add YAML prompt loader
 test: add golden QA evaluation script skeleton
 ci: add prompt quality gate workflow
 ```
 
-## PR 전략
+## 브랜치 전략
 
-Phase별로 브랜치를 따서 PR을 만듭니다.
+`{type}/{description}` 형식으로 브랜치를 생성하고, 작업 완료 후 main에 PR을 올립니다.
 
 ```
-v2/refactor-structure  →  main  (Phase 1)
-v2/prompt-external     →  main  (Phase 2)
-v2/eval-pipeline       →  main  (Phase 3)
-v2/observability       →  main  (Phase 4)
-v2/prompt-cicd         →  main  (Phase 5)
-v2/cloud-deploy        →  main  (Phase 5)
+refactor/modular-architecture  →  main
+feat/prompt-yaml-loader        →  main
+feat/eval-pipeline             →  main
+feat/observability             →  main
+ci/prompt-quality-gate         →  main
+feat/cloud-deploy              →  main
 ```
 
 ## 코드 스타일
