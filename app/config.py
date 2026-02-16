@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from dotenv import load_dotenv
 from pydantic_settings import BaseSettings
+
+# .env 파일을 os.environ에 로드 (LangChain 등 서드파티가 직접 환경변수를 참조)
+load_dotenv()
 
 
 class Settings(BaseSettings):

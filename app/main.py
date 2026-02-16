@@ -27,8 +27,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         initialize_rag()
         logger.info("AI agent initialized successfully")
-    except Exception as e:
-        logger.error(f"Failed to initialize AI agent: {e}")
+    except Exception:
+        logger.exception("Failed to initialize AI agent")
         raise
     yield
     logger.info("Shutting down server...")
@@ -44,7 +44,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 실제 배포 시에는 프론트엔드 도메인만 허용
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

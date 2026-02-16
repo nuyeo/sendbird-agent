@@ -35,5 +35,5 @@ async def send_message(channel_url: str, message: str) -> None:
             response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             logger.debug(f"Message sent to channel {channel_url}")
-    except httpx.HTTPError as e:
-        logger.error(f"Failed to send message to Sendbird: {e}")
+    except httpx.HTTPError:
+        logger.exception("Failed to send message to Sendbird")

@@ -152,6 +152,6 @@ def get_ai_response(user_query: str, user_id: str = "default") -> str:
             config={"configurable": {"session_id": user_id}},
         )
         return response["output"]
-    except Exception as e:
-        logger.error("AI 응답 생성 중 오류: %s", e)
+    except Exception:
+        logger.exception("AI 응답 생성 중 오류")
         return "죄송합니다. 잠시 후 다시 시도해 주세요."

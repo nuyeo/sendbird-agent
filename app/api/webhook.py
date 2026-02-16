@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -9,6 +10,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.agent.rag import get_ai_response
@@ -42,7 +44,11 @@ async def sendbird_webhook(
     Returns:
         상태 응답 딕셔너리.
     """
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception:
+        return JSONResponse(status_code=400, content={"detail": "Invalid JSON body"})
+
     category = data.get("category")
 
     if category == "group_channel:message_send":
@@ -63,7 +69,9 @@ async def sendbird_webhook(
         start_time = time.time()
 
         try:
-            ai_answer = get_ai_response(user_message, user_id=user_id)
+            ai_answer = await asyncio.to_thread(
+                get_ai_response, user_message, user_id
+            )
             duration = round((time.time() - start_time) * 1000)
 
             logger.info(f"Generated response in {duration}ms")
