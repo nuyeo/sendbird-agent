@@ -10,9 +10,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 
-load_dotenv()
-
 _BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(_BASE_DIR))
+load_dotenv()
 
 
 def _load_golden_set() -> list[dict]:
@@ -21,35 +21,36 @@ def _load_golden_set() -> list[dict]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _init_agent() -> None:
+    """평가용 에이전트를 초기화합니다."""
+    from app.agent.rag import agent_executor_base, initialize_rag
+
+    if agent_executor_base is None:
+        initialize_rag()
+
+
 def _call_agent(user_query: str) -> dict:
     """에이전트를 호출하고 응답과 중간 단계를 반환합니다.
 
     Returns:
         {"output": str, "tools_called": list[str]} 형태의 딕셔너리.
     """
-    from app.agent.rag import agent_executor, initialize_rag
+    from app.agent.rag import agent_executor_base
 
-    if agent_executor is None:
-        initialize_rag()
-
-    from app.agent.rag import agent_executor as executor
-
-    if executor is None:
+    if agent_executor_base is None:
         return {"output": "에이전트 초기화 실패", "tools_called": []}
 
-    result = executor.invoke(
-        {"input": user_query},
-        config={"configurable": {"session_id": "eval_session"}},
-    )
+    # return_intermediate_steps를 활성화하여 tool 호출 정보를 얻음
+    agent_executor_base.return_intermediate_steps = True
+    result = agent_executor_base.invoke({"input": user_query})
 
-    # RunnableWithMessageHistory의 출력에서 tool 호출 정보 추출
+    # intermediate_steps에서 호출된 tool 이름 추출
     tools_called = []
-    if hasattr(result, "get"):
-        for step in result.get("intermediate_steps", []):
-            if hasattr(step, "__len__") and len(step) >= 1:
-                action = step[0]
-                if hasattr(action, "tool"):
-                    tools_called.append(action.tool)
+    for step in result.get("intermediate_steps", []):
+        if isinstance(step, (list, tuple)) and len(step) >= 1:
+            action = step[0]
+            if hasattr(action, "tool"):
+                tools_called.append(action.tool)
 
     return {"output": result.get("output", ""), "tools_called": tools_called}
 
@@ -204,6 +205,8 @@ def run_evaluation() -> dict:
     """전체 평가를 실행하고 요약을 반환합니다."""
     golden_set = _load_golden_set()
     print(f"Golden QA Set 로드 완료: {len(golden_set)}개 테스트 케이스")
+
+    _init_agent()
 
     results = []
     for tc in golden_set:

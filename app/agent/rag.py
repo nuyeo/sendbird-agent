@@ -27,6 +27,7 @@ from app.prompt.loader import load_prompt
 logger = logging.getLogger(__name__)
 
 agent_executor = None
+agent_executor_base = None
 
 # 세션별 대화 히스토리 저장소
 chat_history_store: dict[str, InMemoryChatMessageHistory] = {}
@@ -41,7 +42,7 @@ def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
 
 def initialize_rag() -> None:
     """RAG 시스템과 에이전트를 초기화합니다."""
-    global agent_executor
+    global agent_executor, agent_executor_base
 
     base_dir = Path(__file__).resolve().parent.parent.parent
     db_path = str(base_dir / "data" / "chroma_db")

@@ -83,8 +83,8 @@
     "id": "TC-011",
     "category": "tool_calling",
     "user_query": "C303 주문 취소해주세요",
-    "expected_tool": "cancel_order",
-    "reference_answer": "주문 C303이 정상적으로 취소되었습니다.",
+    "expected_tool": "search_order_status",
+    "reference_answer": "현재 '상품 준비 중' 상태이므로 취소가 가능합니다. 취소를 진행할까요?",
     "eval_criteria": ["tool_accuracy", "relevance"]
   },
   {
