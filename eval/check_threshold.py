@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
@@ -38,8 +39,6 @@ def check_threshold(results_path: Path | None = None) -> bool:
     results: list[dict] = json.loads(results_path.read_text(encoding="utf-8"))
 
     # 카테고리별 평균 계산
-    from collections import defaultdict
-
     category_scores: dict[str, list[float]] = defaultdict(list)
     all_scores: list[float] = []
 

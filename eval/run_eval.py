@@ -14,6 +14,16 @@ _BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_BASE_DIR))
 load_dotenv()
 
+_judge_llm: ChatOpenAI | None = None
+
+
+def _get_judge_llm() -> ChatOpenAI:
+    """LLM-as-Judge 인스턴스를 캐싱하여 반환합니다."""
+    global _judge_llm
+    if _judge_llm is None:
+        _judge_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0)
+    return _judge_llm
+
 
 def _load_golden_set() -> list[dict]:
     """Golden QA Set JSON 파일을 로드합니다."""
@@ -40,9 +50,13 @@ def _call_agent(user_query: str) -> dict:
     if agent_executor_base is None:
         return {"output": "에이전트 초기화 실패", "tools_called": []}
 
-    # return_intermediate_steps를 활성화하여 tool 호출 정보를 얻음
-    agent_executor_base.return_intermediate_steps = True
-    result = agent_executor_base.invoke({"input": user_query})
+    # return_intermediate_steps를 임시 활성화하여 tool 호출 정보를 얻음
+    original_flag = agent_executor_base.return_intermediate_steps
+    try:
+        agent_executor_base.return_intermediate_steps = True
+        result = agent_executor_base.invoke({"input": user_query})
+    finally:
+        agent_executor_base.return_intermediate_steps = original_flag
 
     # intermediate_steps에서 호출된 tool 이름 추출
     tools_called = []
@@ -85,7 +99,7 @@ def _judge_with_llm(
     Returns:
         기준별 점수 딕셔너리 (0.0 ~ 1.0).
     """
-    judge_llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0)
+    judge_llm = _get_judge_llm()
 
     criteria_descriptions = {
         "faithfulness": "응답이 제공된 정보에 근거하며 허위 정보를 포함하지 않는 정도",

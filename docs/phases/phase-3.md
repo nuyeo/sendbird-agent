@@ -32,8 +32,8 @@ Golden QA Set과 자동 평가 스크립트를 구축하여, 프롬프트나 코
     "id": "TC-001",
     "category": "faq",
     "user_query": "환불 정책이 어떻게 되나요?",
-    "expected_tool": null,
-    "reference_answer": "구매 후 7일 이내 미사용 시 전액 환불 가능합니다.",
+    "expected_tool": "search_faq",
+    "reference_answer": "단순 변심에 의한 환불은 제품 수령 후 7일 이내에만 가능합니다.",
     "eval_criteria": ["faithfulness", "relevance"]
   },
   {
