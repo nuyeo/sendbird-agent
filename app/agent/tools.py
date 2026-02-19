@@ -11,20 +11,20 @@ MOCK_DB = {
         "status": "배송 완료",
         "item": "무선 키보드",
         "price": 50000,
-        "purchased_at": (today - timedelta(days=10)).strftime("%Y-%m-%d")  # 10일 전
+        "purchased_at": (today - timedelta(days=10)).strftime("%Y-%m-%d"),  # 10일 전
     },
     "B202": {
         "status": "배송 중",
         "item": "게이밍 마우스",
         "price": 30000,
-        "purchased_at": (today - timedelta(days=3)).strftime("%Y-%m-%d")  # 3일 전
+        "purchased_at": (today - timedelta(days=3)).strftime("%Y-%m-%d"),  # 3일 전
     },
     "C303": {
         "status": "상품 준비 중",
         "item": "27인치 모니터",
         "price": 250000,
-        "purchased_at": today.strftime("%Y-%m-%d")  # 오늘 (0일 전)
-    }
+        "purchased_at": today.strftime("%Y-%m-%d"),  # 오늘 (0일 전)
+    },
 }
 
 
@@ -40,7 +40,7 @@ def search_order_status(order_id: str) -> str:
 
     if order:
         # 경과일 계산 로직
-        p_date = datetime.strptime(order['purchased_at'], "%Y-%m-%d")
+        p_date = datetime.strptime(order["purchased_at"], "%Y-%m-%d")
         days_passed = (datetime.now() - p_date).days
 
         return (
@@ -64,8 +64,8 @@ def cancel_order(order_id: str) -> str:
     if not order:
         return "존재하지 않는 주문 번호입니다."
 
-    if order['status'] == "상품 준비 중":
-        order['status'] = "취소 완료"
+    if order["status"] == "상품 준비 중":
+        order["status"] = "취소 완료"
         return f"주문 {order_id}가 정상적으로 취소되었습니다."
     else:
         return f"취소 실패: 현재 '{order['status']}' 상태이므로 취소가 불가능합니다."
@@ -87,6 +87,7 @@ def refund_calculator(price: int, days_passed: int) -> str:
         return f"90% 환불 가능합니다. (예상 환불액: {refund_amount}원)"
     else:
         return "구매 후 14일이 지나 환불이 불가능합니다."
+
 
 @tool
 def transfer_to_human(reason: str) -> str:
