@@ -19,6 +19,9 @@ logger = get_logger()
 
 router = APIRouter()
 
+# 사용자에게 노출할 오류 메시지
+_AI_ERROR_MESSAGE = "죄송합니다. 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
+
 # 인메모리 대화 로그 저장소
 MAX_CHAT_LOGS = 1000
 chat_logs: list[dict[str, Any]] = []
@@ -113,8 +116,7 @@ async def sendbird_webhook(
 
         except Exception:
             logger.exception("메시지 처리 중 오류 발생", user_id=user_id)
-            error_msg = "죄송합니다. 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
-            background_tasks.add_task(send_message, channel_url, error_msg)
+            background_tasks.add_task(send_message, channel_url, _AI_ERROR_MESSAGE)
 
     return {"status": "ok"}
 

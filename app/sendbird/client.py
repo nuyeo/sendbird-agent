@@ -37,7 +37,7 @@ async def send_message(channel_url: str, message: str) -> None:
     except httpx.TimeoutException:
         logger.error("Sendbird 메시지 전송 타임아웃", channel_url=channel_url)
     except httpx.HTTPStatusError as e:
-        logger.error(
+        logger.exception(
             "Sendbird API 에러 응답",
             channel_url=channel_url,
             status_code=e.response.status_code,
