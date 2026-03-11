@@ -34,5 +34,13 @@ async def send_message(channel_url: str, message: str) -> None:
             response = await client.post(url, json=payload, headers=headers)
             response.raise_for_status()
             logger.debug("Sendbird 메시지 전송 완료", channel_url=channel_url)
+    except httpx.TimeoutException:
+        logger.error("Sendbird 메시지 전송 타임아웃", channel_url=channel_url)
+    except httpx.HTTPStatusError as e:
+        logger.exception(
+            "Sendbird API 에러 응답",
+            channel_url=channel_url,
+            status_code=e.response.status_code,
+        )
     except httpx.HTTPError:
         logger.exception("Sendbird 메시지 전송 실패", channel_url=channel_url)
