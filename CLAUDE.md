@@ -37,6 +37,18 @@ cd dashboard && npm run dev
 
 전체 가이드: `docs/sendbird-agent-v2.md`
 
+## 프로덕션 스케일업 플랜
+
+현재 v2를 프로덕션 규모로 확장하는 아키텍처 계획입니다.
+
+상세 내용: `docs/plan.md`
+
+- Phase A: 데이터 영속성 & Docker (Redis/PostgreSQL) → `feat/persistence-layer`
+- Phase B: Sendbird 제거 & WebSocket 채팅 UI → `feat/custom-chat-ui`
+- Phase C: 신뢰성 & 운영 강화 → `feat/reliability`
+- Phase D: 토큰 비용 최적화 → `feat/token-cost-optimization`
+- Phase E: 클라우드 배포 → `ci/cloud-deploy`
+
 ## 브랜치 전략
 
 **main 브랜치에 직접 커밋하지 마세요.** 새로운 기능이나 변경사항은 반드시 알맞은 브랜치를 생성/checkout하여 작업하고, 작업이 완료되면 PR을 올립니다.
