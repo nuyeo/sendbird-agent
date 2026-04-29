@@ -1,3 +1,9 @@
+# Phase A: 데이터 영속성 레이어
+langchain-postgres==0.0.17
+pgvector==0.3.6
+psycopg[binary,pool]==3.3.3
+redis==7.4.0
+
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.2
 aiosignal==1.4.0

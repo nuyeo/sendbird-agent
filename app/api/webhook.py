@@ -4,27 +4,24 @@ from __future__ import annotations
 
 import asyncio
 import time
-from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent.rag import get_ai_response
 from app.observability.logger import bind_request_context, generate_request_id, get_logger
 from app.sendbird.client import send_message
+from app.storage.database import get_db
+from app.storage.repositories import chat_log_repo
 
 logger = get_logger()
 
 router = APIRouter()
 
-# 사용자에게 노출할 오류 메시지
 _AI_ERROR_MESSAGE = "죄송합니다. 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요."
-
-# 인메모리 대화 로그 저장소
-MAX_CHAT_LOGS = 1000
-chat_logs: list[dict[str, Any]] = []
 
 
 class FeedbackRequest(BaseModel):
@@ -37,12 +34,14 @@ class FeedbackRequest(BaseModel):
 async def sendbird_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
 ) -> Response:
     """Sendbird 웹훅 이벤트를 처리합니다.
 
     Args:
         request: FastAPI 요청 객체.
         background_tasks: 백그라운드 태스크 매니저.
+        db: 비동기 DB 세션.
 
     Returns:
         상태 응답 딕셔너리 또는 에러 JSONResponse.
@@ -62,7 +61,6 @@ async def sendbird_webhook(
         sender = data.get("sender", {})
         user_id = sender.get("user_id", "Unknown")
 
-        # 봇 자신의 메시지 무시
         if user_id == "ai_agent_bot":
             return {"status": "ok"}
 
@@ -74,13 +72,8 @@ async def sendbird_webhook(
             logger.warning("channel_url이 없는 웹훅 수신", user_id=user_id)
             return {"status": "ok"}
 
-        logger.info(
-            "사용자 메시지 수신",
-            user_id=user_id,
-            message_preview=user_message[:50],
-        )
+        logger.info("사용자 메시지 수신", user_id=user_id, message_preview=user_message[:50])
 
-        # AI 응답 시간 측정
         start_time = time.time()
 
         try:
@@ -89,29 +82,18 @@ async def sendbird_webhook(
             token_usage = result["token_usage"]
             latency_ms = round((time.time() - start_time) * 1000)
 
-            logger.info(
-                "AI 응답 생성 완료",
+            logger.info("AI 응답 생성 완료", user_id=user_id, latency_ms=latency_ms)
+
+            await chat_log_repo.create_chat_log(
+                db,
+                log_id=request_id,
                 user_id=user_id,
+                question=user_message,
+                answer=ai_answer,
                 latency_ms=latency_ms,
                 token_usage=token_usage,
             )
 
-            # 대화 로그 저장
-            log_entry = {
-                "id": request_id,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "user_id": user_id,
-                "question": user_message,
-                "answer": ai_answer,
-                "latency_ms": latency_ms,
-                "token_usage": token_usage,
-                "feedback": None,
-            }
-            chat_logs.insert(0, log_entry)
-            if len(chat_logs) > MAX_CHAT_LOGS:
-                chat_logs.pop()
-
-            # 비동기로 응답 전송
             background_tasks.add_task(send_message, channel_url, ai_answer)
 
         except Exception:
@@ -122,35 +104,54 @@ async def sendbird_webhook(
 
 
 @router.put("/api/logs/{log_id}/feedback")
-def update_feedback(log_id: str, request: FeedbackRequest) -> dict[str, Any]:
+async def update_feedback(
+    log_id: str,
+    request: FeedbackRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
     """특정 대화 로그에 피드백을 업데이트합니다.
 
     Args:
         log_id: 로그 항목 UUID.
         request: 피드백 요청.
+        db: 비동기 DB 세션.
 
     Returns:
         성공 응답 또는 에러.
     """
-    for log in chat_logs:
-        if log["id"] == log_id:
-            log["feedback"] = request.feedback
-            logger.info(
-                "피드백 추가",
-                log_id=log_id,
-                feedback=request.feedback,
-            )
-            return {"status": "success", "log_id": log_id, "feedback": request.feedback}
+    log = await chat_log_repo.update_feedback(db, log_id=log_id, feedback=request.feedback)
+    if log is None:
+        logger.warning("로그를 찾을 수 없음", log_id=log_id)
+        raise HTTPException(status_code=404, detail="Log not found")
 
-    logger.warning("로그를 찾을 수 없음", log_id=log_id)
-    raise HTTPException(status_code=404, detail="Log not found")
+    logger.info("피드백 추가", log_id=log_id, feedback=request.feedback)
+    return {"status": "success", "log_id": log_id, "feedback": request.feedback}
 
 
 @router.get("/api/logs")
-def get_chat_logs() -> dict[str, Any]:
-    """모든 대화 로그를 반환합니다.
+async def get_chat_logs(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
+    """최신 순으로 대화 로그를 반환합니다.
+
+    Args:
+        db: 비동기 DB 세션.
 
     Returns:
         로그 리스트와 총 개수를 담은 딕셔너리.
     """
-    return {"logs": chat_logs, "total": len(chat_logs)}
+    logs = await chat_log_repo.list_chat_logs(db)
+    return {
+        "logs": [
+            {
+                "id": str(log.id),
+                "user_id": log.user_id,
+                "question": log.question,
+                "answer": log.answer,
+                "latency_ms": log.latency_ms,
+                "token_usage": log.token_usage,
+                "feedback": log.feedback,
+                "timestamp": log.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+            for log in logs
+        ],
+        "total": len(logs),
+    }

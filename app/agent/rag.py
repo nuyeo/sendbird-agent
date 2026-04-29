@@ -7,12 +7,12 @@ from typing import Any
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.tools.retriever import create_retriever_tool
+from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_community.document_loaders import TextLoader
-from langchain_community.vectorstores import Chroma
-from langchain_core.chat_history import InMemoryChatMessageHistory
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_postgres import PGVector
 from langchain_text_splitters import CharacterTextSplitter
 
 from app.agent.tools import (
@@ -30,15 +30,32 @@ logger = get_logger()
 agent_executor: RunnableWithMessageHistory | None = None
 agent_executor_base: AgentExecutor | None = None
 
-# 세션별 대화 히스토리 저장소
-chat_history_store: dict[str, InMemoryChatMessageHistory] = {}
+_VECTOR_COLLECTION = "faq"
 
 
-def get_session_history(session_id: str) -> InMemoryChatMessageHistory:
-    """세션 ID에 해당하는 대화 히스토리를 반환합니다."""
-    if session_id not in chat_history_store:
-        chat_history_store[session_id] = InMemoryChatMessageHistory()
-    return chat_history_store[session_id]
+def get_session_history(session_id: str) -> RedisChatMessageHistory:
+    """세션 ID에 해당하는 Redis 기반 대화 히스토리를 반환합니다.
+
+    Args:
+        session_id: 사용자 식별자.
+
+    Returns:
+        RedisChatMessageHistory 인스턴스.
+    """
+    return RedisChatMessageHistory(
+        session_id=session_id,
+        redis_url=settings.redis_url,
+        ttl=settings.session_ttl_seconds,
+    )
+
+
+def _get_postgres_connection_string() -> str:
+    """PGVector용 psycopg2 스타일 연결 문자열을 반환합니다.
+
+    langchain-postgres는 psycopg2 연결 문자열을 사용하므로
+    SQLAlchemy async URL(postgresql+psycopg://)에서 변환합니다.
+    """
+    return settings.postgres_url.replace("postgresql+psycopg://", "postgresql+psycopg2://")
 
 
 def initialize_rag() -> None:
@@ -46,17 +63,23 @@ def initialize_rag() -> None:
     global agent_executor, agent_executor_base
 
     base_dir = Path(__file__).resolve().parent.parent.parent
-    db_path = str(base_dir / "data" / "chroma_db")
     file_path = str(base_dir / "data" / "faq.txt")
 
-    # 1. 벡터 DB 로드
+    # 1. 임베딩 & pgvector 벡터 DB
     embeddings = OpenAIEmbeddings()
-    db_path_obj = Path(db_path)
-    if db_path_obj.exists() and any(db_path_obj.iterdir()):
-        logger.info("기존 벡터 DB를 불러옵니다...")
-        db = Chroma(persist_directory=db_path, embedding_function=embeddings)
-    else:
-        logger.info("문서를 새로 학습합니다...")
+    connection_string = _get_postgres_connection_string()
+
+    db = PGVector(
+        embeddings=embeddings,
+        collection_name=_VECTOR_COLLECTION,
+        connection=connection_string,
+        use_jsonb=True,
+    )
+
+    # 벡터 DB가 비어 있으면 FAQ 문서를 인덱싱
+    existing = db.similarity_search("test", k=1)
+    if not existing:
+        logger.info("FAQ 문서를 pgvector에 최초 인덱싱합니다...")
         if not Path(file_path).exists():
             logger.error("FAQ 파일을 찾을 수 없습니다: %s", file_path)
             return
@@ -67,7 +90,10 @@ def initialize_rag() -> None:
             chunk_overlap=settings.chunk_overlap,
         )
         texts = text_splitter.split_documents(documents)
-        db = Chroma.from_documents(texts, embeddings, persist_directory=db_path)
+        db.add_documents(texts)
+        logger.info("FAQ 인덱싱 완료: %d 청크", len(texts))
+    else:
+        logger.info("기존 pgvector 벡터 DB를 불러옵니다...")
 
     # 2. Retriever 도구 생성
     retriever = db.as_retriever()
@@ -111,7 +137,7 @@ def initialize_rag() -> None:
         history_messages_key="chat_history",
     )
 
-    logger.info("Agent Ready (with Memory & Handoff)")
+    logger.info("Agent Ready (Redis 세션 + pgvector RAG)")
 
 
 def get_ai_response(user_query: str, user_id: str = "default") -> dict[str, Any]:
@@ -132,7 +158,6 @@ def get_ai_response(user_query: str, user_id: str = "default") -> dict[str, Any]
             {"input": user_query},
             config={"configurable": {"session_id": user_id}},
         )
-        # TODO: LangChain callback을 통한 token_usage 추출 구현
         return {"output": response["output"], "token_usage": None}
     except Exception:
         logger.exception("AI 응답 생성 중 오류")

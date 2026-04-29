@@ -5,7 +5,7 @@ from app.config import settings
 
 def test_settings_loads():
     """settings 객체가 정상적으로 로드되는지 확인."""
-    assert settings.llm_model == "gpt-3.5-turbo"
+    assert settings.llm_model == "gpt-4o-mini"
     assert settings.llm_temperature == 0.0
     assert settings.chunk_size == 500
     assert settings.chunk_overlap == 0
