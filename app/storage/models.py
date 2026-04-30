@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import UUID, CheckConstraint, Date, DateTime, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
@@ -29,7 +29,7 @@ class ChatLog(Base):
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
 
 
@@ -49,5 +49,5 @@ class Order(Base):
     )
     purchased_at: Mapped[date] = mapped_column(Date, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,7 +24,7 @@ async def get_order(db: AsyncSession, order_id: str) -> Order | None:
     return result.scalar_one_or_none()
 
 
-async def cancel_order(db: AsyncSession, order_id: str) -> Order | None:
+async def cancel_order(db: AsyncSession, order_id: str) -> Order:
     """'상품 준비 중' 상태의 주문을 취소 처리합니다.
 
     동시 취소 요청 방지를 위해 SELECT FOR UPDATE로 잠금 후 상태를 변경합니다.
@@ -34,7 +34,7 @@ async def cancel_order(db: AsyncSession, order_id: str) -> Order | None:
         order_id: 취소할 주문 번호.
 
     Returns:
-        취소 처리된 Order 인스턴스, 취소 불가하면 None.
+        취소 처리된 Order 인스턴스.
 
     Raises:
         ValueError: 주문이 존재하지 않거나 취소 가능 상태가 아닌 경우.
@@ -50,7 +50,7 @@ async def cancel_order(db: AsyncSession, order_id: str) -> Order | None:
             raise ValueError(f"취소 불가 상태입니다: {order.status}")
 
         order.status = "취소 완료"
-        order.updated_at = datetime.utcnow()
+        order.updated_at = datetime.now(UTC)
 
     await db.refresh(order)
     return order

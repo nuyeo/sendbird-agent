@@ -20,6 +20,7 @@ def client():
         mock_conn = AsyncMock()
         mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
         mock_conn.__aexit__ = AsyncMock(return_value=None)
+        mock_conn.execute = AsyncMock(return_value=None)
         mock_engine.connect.return_value = mock_conn
         mock_engine.dispose = AsyncMock()
 

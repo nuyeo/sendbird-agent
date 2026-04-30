@@ -149,7 +149,7 @@ async def get_chat_logs(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
                 "latency_ms": log.latency_ms,
                 "token_usage": log.token_usage,
                 "feedback": log.feedback,
-                "timestamp": log.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "timestamp": log.created_at.isoformat(),
             }
             for log in logs
         ],
