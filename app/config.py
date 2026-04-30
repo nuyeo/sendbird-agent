@@ -20,10 +20,17 @@ class Settings(BaseSettings):
     openai_api_key: str
 
     # Agent
-    llm_model: str = "gpt-3.5-turbo"
+    llm_model: str = "gpt-4o-mini"
     llm_temperature: float = 0.0
     chunk_size: int = 500
     chunk_overlap: int = 0
+
+    # PostgreSQL
+    postgres_url: str = "postgresql+psycopg://cs_agent:cs_agent_pw@localhost:5432/cs_agent"
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+    session_ttl_seconds: int = 86400  # 24시간
 
     # Server
     debug: bool = False
