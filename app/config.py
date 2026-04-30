@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     session_ttl_seconds: int = 86400  # 24시간
 
+    # JWT (WebSocket 인증)
+    jwt_secret_key: str
+    jwt_expire_minutes: int = 60
+
+    # 동시 LLM 호출 제한 (단일 워커 기준)
+    max_concurrent_llm: int = 50
+
     # Server
     debug: bool = False
 

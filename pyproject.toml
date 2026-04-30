@@ -21,6 +21,8 @@ dependencies = [
     "psycopg[binary,pool]>=3.3.3",
     "redis>=5.0",
     "sqlalchemy>=2.0",
+    # Phase B: WebSocket 채팅
+    "PyJWT>=2.8",
 ]
 
 [project.optional-dependencies]

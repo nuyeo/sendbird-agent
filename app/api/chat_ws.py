@@ -1,0 +1,180 @@
+"""WebSocket 채팅 엔드포인트 및 연결 관리자."""
+
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+
+from app.agent.rag import get_ai_response
+from app.api.auth import verify_token
+from app.config import settings
+from app.observability.logger import bind_request_context, generate_request_id, get_logger
+
+logger = get_logger()
+
+router = APIRouter()
+
+_WS_CLOSE_UNAUTHORIZED = 4001
+_WS_CLOSE_INVALID_PAYLOAD = 4002
+
+_llm_semaphore: asyncio.Semaphore | None = None
+
+
+def _get_llm_semaphore() -> asyncio.Semaphore:
+    """동시 LLM 호출을 제한하는 세마포어를 lazy 초기화합니다.
+
+    asyncio.Semaphore는 생성 시점의 이벤트 루프에 바인딩되므로,
+    설정 임포트 시점이 아닌 첫 사용 시점에 만들어야 합니다.
+    """
+    global _llm_semaphore
+    if _llm_semaphore is None:
+        _llm_semaphore = asyncio.Semaphore(settings.max_concurrent_llm)
+    return _llm_semaphore
+
+
+class WebSocketManager:
+    """user_id별 활성 WebSocket 연결을 추적합니다.
+
+    동일 user_id가 여러 탭/디바이스에서 접속할 수 있으므로 세트로 관리합니다.
+    """
+
+    def __init__(self) -> None:
+        """연결 매핑을 초기화합니다."""
+        self._connections: dict[str, set[WebSocket]] = {}
+        self._lock = asyncio.Lock()
+
+    async def connect(self, user_id: str, websocket: WebSocket) -> None:
+        """클라이언트 연결을 수락하고 추적 목록에 추가합니다.
+
+        Args:
+            user_id: JWT 검증을 통과한 사용자 식별자.
+            websocket: 수락할 WebSocket 객체.
+        """
+        await websocket.accept()
+        async with self._lock:
+            self._connections.setdefault(user_id, set()).add(websocket)
+
+    async def disconnect(self, user_id: str, websocket: WebSocket) -> None:
+        """추적 목록에서 연결을 제거합니다.
+
+        Args:
+            user_id: 연결을 등록할 때 사용한 사용자 식별자.
+            websocket: 제거할 WebSocket 객체.
+        """
+        async with self._lock:
+            sessions = self._connections.get(user_id)
+            if sessions is None:
+                return
+            sessions.discard(websocket)
+            if not sessions:
+                del self._connections[user_id]
+
+    async def send_personal(self, user_id: str, message: dict[str, Any]) -> None:
+        """동일 user_id의 모든 활성 연결로 메시지를 전송합니다.
+
+        Args:
+            user_id: 대상 사용자 식별자.
+            message: 전송할 JSON 직렬화 가능한 페이로드.
+        """
+        async with self._lock:
+            sessions = list(self._connections.get(user_id, set()))
+        for ws in sessions:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                logger.exception("WebSocket 전송 실패", user_id=user_id)
+
+    def active_user_count(self) -> int:
+        """현재 추적 중인 고유 사용자 수를 반환합니다."""
+        return len(self._connections)
+
+
+manager = WebSocketManager()
+
+
+async def _handle_user_message(user_id: str, message: str) -> dict[str, Any]:
+    """LLM 호출을 세마포어로 제한한 뒤 응답을 반환합니다.
+
+    Args:
+        user_id: 메시지를 보낸 사용자 식별자.
+        message: 사용자 메시지.
+
+    Returns:
+        get_ai_response가 반환하는 {"output", "token_usage"} 딕셔너리.
+    """
+    semaphore = _get_llm_semaphore()
+    async with semaphore:
+        return await asyncio.to_thread(get_ai_response, message, user_id)
+
+
+@router.websocket("/ws/{user_id}")
+async def chat_websocket(
+    websocket: WebSocket,
+    user_id: str,
+    token: str = Query(..., description="JWT access token"),
+) -> None:
+    """사용자별 채팅 WebSocket 엔드포인트.
+
+    JWT 검증 통과 후 user_message 타입 메시지를 받아 AI 응답을 1회 전송합니다.
+    동시 LLM 호출은 settings.max_concurrent_llm 세마포어로 제한됩니다.
+
+    Args:
+        websocket: 클라이언트 WebSocket 연결.
+        user_id: URL 경로의 사용자 식별자.
+        token: JWT access token (query param).
+    """
+    request_id = generate_request_id()
+    bind_request_context(request_id)
+
+    try:
+        token_user_id = verify_token(token)
+    except ValueError as exc:
+        logger.warning("WebSocket 인증 실패", user_id=user_id, reason=str(exc))
+        await websocket.close(code=_WS_CLOSE_UNAUTHORIZED)
+        return
+
+    if token_user_id != user_id:
+        logger.warning(
+            "WebSocket user_id 불일치",
+            url_user_id=user_id,
+            token_user_id=token_user_id,
+        )
+        await websocket.close(code=_WS_CLOSE_UNAUTHORIZED)
+        return
+
+    await manager.connect(user_id, websocket)
+    logger.info("WebSocket 연결 수립", user_id=user_id)
+
+    try:
+        while True:
+            try:
+                payload = await websocket.receive_json()
+            except WebSocketDisconnect:
+                raise
+            except Exception:
+                logger.warning("잘못된 JSON 메시지", user_id=user_id)
+                await websocket.close(code=_WS_CLOSE_INVALID_PAYLOAD)
+                return
+
+            message_type = payload.get("type")
+            if message_type != "user_message":
+                await websocket.send_json({"type": "error", "message": "Unsupported message type"})
+                continue
+
+            user_message = payload.get("message", "")
+            if not isinstance(user_message, str) or not user_message.strip():
+                await websocket.send_json({"type": "error", "message": "Empty message"})
+                continue
+
+            await websocket.send_json({"type": "typing"})
+            result = await _handle_user_message(user_id, user_message)
+            await websocket.send_json({"type": "ai_response", "message": result["output"]})
+
+    except WebSocketDisconnect:
+        logger.info("WebSocket 연결 종료", user_id=user_id)
+    except Exception:
+        logger.exception("WebSocket 처리 중 오류", user_id=user_id)
+    finally:
+        await manager.disconnect(user_id, websocket)
