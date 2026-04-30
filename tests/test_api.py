@@ -58,6 +58,15 @@ def test_feedback_not_found(mock_update, client: TestClient) -> None:
     assert response.status_code == 404
 
 
+def test_feedback_rejects_invalid_value(client: TestClient) -> None:
+    """허용되지 않은 피드백 값은 422로 거부되는지 테스트."""
+    response = client.put(
+        "/api/logs/00000000-0000-0000-0000-000000000000/feedback",
+        json={"feedback": "maybe"},
+    )
+    assert response.status_code == 422
+
+
 def test_webhook_ignores_bot_message(client: TestClient) -> None:
     """봇 자신의 메시지를 무시하는지 테스트."""
     response = client.post(

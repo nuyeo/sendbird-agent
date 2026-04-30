@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
@@ -27,7 +27,7 @@ _AI_ERROR_MESSAGE = "죄송합니다. 일시적인 오류가 발생했습니다.
 class FeedbackRequest(BaseModel):
     """피드백 요청 모델."""
 
-    feedback: str = Field(..., description="Feedback type: 'up' or 'down'")
+    feedback: Literal["up", "down"] = Field(..., description="Feedback type: 'up' or 'down'")
 
 
 @router.post("/webhook")
