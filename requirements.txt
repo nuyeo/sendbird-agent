@@ -85,6 +85,7 @@ pyasn1==0.6.1
 pyasn1_modules==0.4.2
 pybase64==1.4.2
 pydantic==2.12.4
+PyJWT==2.12.1
 pydantic-settings==2.11.0
 pydantic_core==2.41.5
 Pygments==2.19.2

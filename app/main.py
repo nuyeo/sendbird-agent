@@ -10,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
 from app.agent.rag import initialize_rag
+from app.api.auth import router as auth_router
+from app.api.chat_ws import router as chat_ws_router
 from app.api.health import router as health_router
 from app.api.webhook import router as webhook_router
 from app.observability.logger import get_logger, setup_logging
@@ -74,3 +76,5 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(webhook_router)
+app.include_router(auth_router)
+app.include_router(chat_ws_router)
