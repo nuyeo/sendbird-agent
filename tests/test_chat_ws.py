@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -12,7 +13,7 @@ from app.api.auth import issue_token
 
 
 @pytest.fixture()
-def client():
+def client() -> Iterator[TestClient]:
     """DB/Redis/RAG를 mock 처리한 TestClient 픽스처."""
     with (
         patch("app.main.initialize_rag"),
@@ -87,3 +88,14 @@ def test_websocket_rejects_unknown_message_type(client: TestClient) -> None:
         ws.send_json({"type": "ping"})
         response = ws.receive_json()
         assert response == {"type": "error", "message": "Unsupported message type"}
+
+
+def test_websocket_rejects_malformed_json(client: TestClient) -> None:
+    """잘못된 JSON 페이로드는 4002 코드로 종료되어야 합니다."""
+    token, _ = issue_token("alice")
+
+    with pytest.raises(WebSocketDisconnect) as exc_info:
+        with client.websocket_connect(f"/ws/alice?token={token}") as ws:
+            ws.send_text("{invalid-json")
+            ws.receive_text()
+    assert exc_info.value.code == 4002

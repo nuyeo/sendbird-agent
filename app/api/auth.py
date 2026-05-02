@@ -63,7 +63,10 @@ def verify_token(token: str) -> str:
     """
     try:
         payload: dict[str, Any] = jwt.decode(
-            token, settings.jwt_secret_key, algorithms=[_JWT_ALGORITHM]
+            token,
+            settings.jwt_secret_key,
+            algorithms=[_JWT_ALGORITHM],
+            options={"require": ["exp", "sub"]},
         )
     except jwt.PyJWTError as exc:
         raise ValueError(f"Invalid JWT: {exc}") from exc

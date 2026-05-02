@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
@@ -24,7 +25,9 @@ def test_issue_and_verify_round_trip() -> None:
 def test_verify_token_rejects_invalid_signature() -> None:
     """다른 키로 서명된 토큰은 거부되어야 합니다."""
     forged = jwt.encode(
-        {"sub": "user_42"}, "wrong_secret_at_least_32_chars_long", algorithm="HS256"
+        {"sub": "user_42", "exp": int((datetime.now(UTC) + timedelta(minutes=5)).timestamp())},
+        f"{settings.jwt_secret_key}_invalid_signature",
+        algorithm="HS256",
     )
     with pytest.raises(ValueError):
         verify_token(forged)
@@ -44,13 +47,25 @@ def test_verify_token_rejects_expired_token() -> None:
 
 def test_verify_token_rejects_missing_sub() -> None:
     """sub 클레임이 없는 토큰은 거부되어야 합니다."""
-    no_sub = jwt.encode({"foo": "bar"}, settings.jwt_secret_key, algorithm="HS256")
+    future = datetime.now(UTC) + timedelta(minutes=5)
+    no_sub = jwt.encode(
+        {"foo": "bar", "exp": int(future.timestamp())},
+        settings.jwt_secret_key,
+        algorithm="HS256",
+    )
     with pytest.raises(ValueError):
         verify_token(no_sub)
 
 
+def test_verify_token_rejects_missing_exp() -> None:
+    """exp 클레임이 없는 토큰은 거부되어야 합니다."""
+    no_exp = jwt.encode({"sub": "user_42"}, settings.jwt_secret_key, algorithm="HS256")
+    with pytest.raises(ValueError):
+        verify_token(no_exp)
+
+
 @pytest.fixture()
-def client():
+def client() -> Iterator[TestClient]:
     """DB/Redis/RAG를 mock 처리한 TestClient 픽스처."""
     with (
         patch("app.main.initialize_rag"),
