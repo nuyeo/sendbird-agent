@@ -13,7 +13,7 @@ from app.agent.rag import initialize_rag
 from app.api.auth import router as auth_router
 from app.api.chat_ws import router as chat_ws_router
 from app.api.health import router as health_router
-from app.api.webhook import router as webhook_router
+from app.api.logs import router as logs_router
 from app.observability.logger import get_logger, setup_logging
 from app.storage.database import engine
 from app.storage.redis_client import close_redis, initialize_redis
@@ -75,6 +75,6 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
-app.include_router(webhook_router)
+app.include_router(logs_router)
 app.include_router(auth_router)
 app.include_router(chat_ws_router)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -11,6 +12,8 @@ from app.agent.rag import get_ai_response
 from app.api.auth import verify_token
 from app.config import settings
 from app.observability.logger import bind_request_context, generate_request_id, get_logger
+from app.storage.database import AsyncSessionLocal
+from app.storage.repositories import chat_log_repo
 
 logger = get_logger()
 
@@ -109,6 +112,42 @@ async def _handle_user_message(user_id: str, message: str) -> dict[str, Any]:
         return await asyncio.to_thread(get_ai_response, message, user_id)
 
 
+async def _persist_chat_log(
+    *,
+    log_id: str,
+    user_id: str,
+    question: str,
+    answer: str,
+    latency_ms: int,
+    token_usage: dict[str, Any] | None,
+) -> None:
+    """대화 로그를 PostgreSQL에 저장합니다.
+
+    저장 실패는 사용자 응답을 막지 않도록 예외를 삼킵니다.
+
+    Args:
+        log_id: 메시지 단위 요청 ID(UUID 문자열).
+        user_id: 사용자 식별자.
+        question: 사용자 질문.
+        answer: AI 응답.
+        latency_ms: 응답 생성 소요 시간(ms).
+        token_usage: OpenAI usage 딕셔너리.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            await chat_log_repo.create_chat_log(
+                db,
+                log_id=log_id,
+                user_id=user_id,
+                question=question,
+                answer=answer,
+                latency_ms=latency_ms,
+                token_usage=token_usage,
+            )
+    except Exception:
+        logger.exception("chat_log 저장 실패", user_id=user_id, log_id=log_id)
+
+
 @router.websocket("/ws/{user_id}")
 async def chat_websocket(
     websocket: WebSocket,
@@ -118,15 +157,16 @@ async def chat_websocket(
     """사용자별 채팅 WebSocket 엔드포인트.
 
     JWT 검증 통과 후 user_message 타입 메시지를 받아 AI 응답을 1회 전송합니다.
-    동시 LLM 호출은 settings.max_concurrent_llm 세마포어로 제한됩니다.
+    동시 LLM 호출은 settings.max_concurrent_llm 세마포어로 제한되며,
+    각 메시지는 chat_logs 테이블에 영속화됩니다.
 
     Args:
         websocket: 클라이언트 WebSocket 연결.
         user_id: URL 경로의 사용자 식별자.
         token: JWT access token (query param).
     """
-    request_id = generate_request_id()
-    bind_request_context(request_id)
+    connection_id = generate_request_id()
+    bind_request_context(connection_id)
 
     try:
         token_user_id = verify_token(token)
@@ -168,8 +208,27 @@ async def chat_websocket(
                 await websocket.send_json({"type": "error", "message": "Empty message"})
                 continue
 
+            # 메시지 단위로 request_id를 새로 발급해 chat_logs와 로그 컨텍스트를 연결
+            message_id = generate_request_id()
+            bind_request_context(message_id)
+
             await websocket.send_json({"type": "typing"})
+
+            start_time = time.time()
             result = await _handle_user_message(user_id, user_message)
+            latency_ms = round((time.time() - start_time) * 1000)
+
+            logger.info("AI 응답 생성 완료", user_id=user_id, latency_ms=latency_ms)
+
+            await _persist_chat_log(
+                log_id=message_id,
+                user_id=user_id,
+                question=user_message,
+                answer=result["output"],
+                latency_ms=latency_ms,
+                token_usage=result.get("token_usage"),
+            )
+
             await websocket.send_json({"type": "ai_response", "message": result["output"]})
 
     except WebSocketDisconnect:

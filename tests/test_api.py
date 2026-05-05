@@ -38,7 +38,7 @@ def test_health_check(client: TestClient) -> None:
     assert data["status"] == "Server is running"
 
 
-@patch("app.api.webhook.chat_log_repo.list_chat_logs", new_callable=AsyncMock, return_value=[])
+@patch("app.api.logs.chat_log_repo.list_chat_logs", new_callable=AsyncMock, return_value=[])
 def test_get_chat_logs_empty(mock_list, client: TestClient) -> None:
     """빈 로그 조회 테스트."""
     response = client.get("/api/logs")
@@ -48,7 +48,7 @@ def test_get_chat_logs_empty(mock_list, client: TestClient) -> None:
     assert data["logs"] == []
 
 
-@patch("app.api.webhook.chat_log_repo.update_feedback", new_callable=AsyncMock, return_value=None)
+@patch("app.api.logs.chat_log_repo.update_feedback", new_callable=AsyncMock, return_value=None)
 def test_feedback_not_found(mock_update, client: TestClient) -> None:
     """존재하지 않는 로그에 피드백 시 404 반환 테스트."""
     response = client.put(
@@ -67,16 +67,7 @@ def test_feedback_rejects_invalid_value(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_webhook_ignores_bot_message(client: TestClient) -> None:
-    """봇 자신의 메시지를 무시하는지 테스트."""
-    response = client.post(
-        "/webhook",
-        json={
-            "category": "group_channel:message_send",
-            "sender": {"user_id": "ai_agent_bot"},
-            "payload": {"message": "test"},
-            "channel": {"channel_url": "test_channel"},
-        },
-    )
-    assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+def test_webhook_endpoint_removed(client: TestClient) -> None:
+    """Sendbird webhook 엔드포인트가 제거되었는지 확인."""
+    response = client.post("/webhook", json={})
+    assert response.status_code == 404
