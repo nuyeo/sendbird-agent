@@ -13,10 +13,6 @@ load_dotenv()
 class Settings(BaseSettings):
     """환경변수 기반 애플리케이션 설정."""
 
-    # Sendbird
-    sendbird_app_id: str
-    sendbird_api_token: str
-
     # OpenAI
     openai_api_key: str
 
@@ -43,7 +39,7 @@ class Settings(BaseSettings):
     # Server
     debug: bool = False
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
 
 settings = Settings()

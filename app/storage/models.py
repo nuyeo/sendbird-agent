@@ -13,7 +13,7 @@ from app.storage.database import Base
 
 
 class ChatLog(Base):
-    """대화 로그 테이블 (webhook.py의 chat_logs list 대체)."""
+    """대화 로그 테이블."""
 
     __tablename__ = "chat_logs"
 
@@ -34,7 +34,7 @@ class ChatLog(Base):
 
 
 class Order(Base):
-    """주문 테이블 (tools.py의 MOCK_DB dict 대체)."""
+    """주문 테이블."""
 
     __tablename__ = "orders"
 

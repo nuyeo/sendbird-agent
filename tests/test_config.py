@@ -13,6 +13,5 @@ def test_settings_loads() -> None:
 
 def test_settings_has_required_fields() -> None:
     """필수 환경변수가 설정되어 있는지 확인."""
-    assert settings.sendbird_app_id
-    assert settings.sendbird_api_token
     assert settings.openai_api_key
+    assert settings.jwt_secret_key

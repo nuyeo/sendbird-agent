@@ -55,9 +55,12 @@ def test_websocket_handles_user_message(client: TestClient) -> None:
     """user_message 수신 시 typing → ai_response 순서로 응답해야 합니다."""
     token, _ = issue_token("alice")
 
-    with patch(
-        "app.api.chat_ws.get_ai_response",
-        return_value={"output": "안녕하세요, Alice 님", "token_usage": None},
+    with (
+        patch(
+            "app.api.chat_ws.get_ai_response",
+            return_value={"output": "안녕하세요, Alice 님", "token_usage": None},
+        ),
+        patch("app.api.chat_ws._persist_chat_log", new_callable=AsyncMock),
     ):
         with client.websocket_connect(f"/ws/alice?token={token}") as ws:
             ws.send_json({"type": "user_message", "message": "안녕"})
@@ -68,6 +71,62 @@ def test_websocket_handles_user_message(client: TestClient) -> None:
             response = ws.receive_json()
             assert response["type"] == "ai_response"
             assert response["message"] == "안녕하세요, Alice 님"
+
+
+def test_websocket_persists_chat_log(client: TestClient) -> None:
+    """user_message 처리 시 chat_log가 영속화되어야 합니다."""
+    token, _ = issue_token("alice")
+    token_usage = {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+
+    with (
+        patch(
+            "app.api.chat_ws.get_ai_response",
+            return_value={"output": "응답", "token_usage": token_usage},
+        ),
+        patch("app.api.chat_ws._persist_chat_log", new_callable=AsyncMock) as mock_persist,
+    ):
+        with client.websocket_connect(f"/ws/alice?token={token}") as ws:
+            ws.send_json({"type": "user_message", "message": "주문 조회"})
+            ws.receive_json()  # typing
+            ws.receive_json()  # ai_response
+
+    mock_persist.assert_awaited_once()
+    kwargs = mock_persist.await_args.kwargs
+    assert kwargs["user_id"] == "alice"
+    assert kwargs["question"] == "주문 조회"
+    assert kwargs["answer"] == "응답"
+    assert kwargs["token_usage"] == token_usage
+    assert isinstance(kwargs["latency_ms"], int)
+    assert kwargs["latency_ms"] >= 0
+    assert isinstance(kwargs["log_id"], str) and kwargs["log_id"]
+
+
+def test_websocket_response_survives_persist_failure(client: TestClient) -> None:
+    """chat_log 저장이 실패해도 사용자에게 응답을 전달해야 합니다."""
+    token, _ = issue_token("alice")
+
+    mock_session = AsyncMock()
+    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+    mock_session.__aexit__ = AsyncMock(return_value=None)
+
+    with (
+        patch(
+            "app.api.chat_ws.get_ai_response",
+            return_value={"output": "응답", "token_usage": None},
+        ),
+        patch("app.api.chat_ws.AsyncSessionLocal", return_value=mock_session),
+        patch(
+            "app.api.chat_ws.chat_log_repo.create_chat_log",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("DB down"),
+        ),
+    ):
+        with client.websocket_connect(f"/ws/alice?token={token}") as ws:
+            ws.send_json({"type": "user_message", "message": "안녕"})
+            ws.receive_json()  # typing
+            response = ws.receive_json()
+            assert response["type"] == "ai_response"
+            assert response["message"] == "응답"
 
 
 def test_websocket_rejects_empty_message(client: TestClient) -> None:
