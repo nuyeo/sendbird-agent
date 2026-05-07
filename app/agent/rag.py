@@ -140,7 +140,7 @@ def initialize_rag() -> None:
     logger.info("Agent Ready (Redis 세션 + pgvector RAG)")
 
 
-async def get_ai_response(user_query: str, user_id: str = "default") -> dict[str, Any]:
+async def get_ai_response(user_query: str, session_id: str = "default") -> dict[str, Any]:
     """사용자 쿼리에 대한 AI 응답을 생성합니다.
 
     도구(search_order_status 등)가 async로 정의되어 있으므로 agent_executor도
@@ -149,7 +149,9 @@ async def get_ai_response(user_query: str, user_id: str = "default") -> dict[str
 
     Args:
         user_query: 사용자 메시지.
-        user_id: 사용자 식별자 (세션 관리용).
+        session_id: LLM 대화 메모리 키. WebSocket 연결마다 발급되어,
+            새 탭/새로고침 시 새 대화로 시작되도록 한다. user_id와 분리되어
+            영속 로그(chat_logs)는 user_id로, LLM 컨텍스트는 session_id로 관리.
 
     Returns:
         {"output": str, "token_usage": dict | None} 형태의 딕셔너리.
@@ -160,7 +162,7 @@ async def get_ai_response(user_query: str, user_id: str = "default") -> dict[str
     try:
         response = await agent_executor.ainvoke(
             {"input": user_query},
-            config={"configurable": {"session_id": user_id}},
+            config={"configurable": {"session_id": session_id}},
         )
         return {"output": response["output"], "token_usage": None}
     except Exception:
