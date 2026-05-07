@@ -101,7 +101,7 @@ export default function Home() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-                Sendbird Agent Monitor
+                CS Agent Monitor
               </h1>
               <p className="text-gray-500 text-sm mt-1">Real-time AI agent performance tracking</p>
             </div>

@@ -1,4 +1,4 @@
-name: Sendbird Agent CI
+name: CS AI Agent CI
 
 on:
   push:
@@ -12,8 +12,6 @@ jobs:
 
     # 환경변수 설정 (테스트용 가짜 키)
     env:
-      SENDBIRD_APP_ID: "test_app_id"
-      SENDBIRD_API_TOKEN: "test_token"
       OPENAI_API_KEY: "test_key"
 
     steps:

@@ -2740,7 +2740,7 @@ wheels = [
 ]
 
 [[package]]
-name = "sendbird-ai-agent"
+name = "cs-ai-agent"
 version = "2.0.0"
 source = { virtual = "." }
 dependencies = [

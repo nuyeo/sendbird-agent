@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Sendbird Agent Monitor",
-  description: "Real-time monitoring dashboard for Sendbird AI agent performance and conversations",
+  title: "CS Agent Monitor",
+  description: "Real-time monitoring dashboard for CS AI agent performance and conversations",
 };
 
 export default function RootLayout({

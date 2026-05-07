@@ -14,7 +14,7 @@ def test_load_prompt_cs_agent_v1() -> None:
     assert config.version == "1.0.0"
     assert config.description
     assert "Customer Support Agent" in config.system_prompt
-    assert "Sendbird Store" in config.system_prompt
+    assert "Online Store" in config.system_prompt
 
 
 def test_load_prompt_has_required_guidelines() -> None:
