@@ -109,7 +109,7 @@ async def _handle_user_message(user_id: str, message: str) -> dict[str, Any]:
     """
     semaphore = _get_llm_semaphore()
     async with semaphore:
-        return await asyncio.to_thread(get_ai_response, message, user_id)
+        return await get_ai_response(message, user_id)
 
 
 async def _persist_chat_log(

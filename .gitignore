@@ -30,3 +30,6 @@ logs/
 # Mac/Windows System files
 .DS_Store
 Thumbs.db
+
+# Local-only Windows dev scripts (not part of the project; macOS/Linux are primary)
+run_dev_windows.py

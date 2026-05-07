@@ -44,18 +44,18 @@ def get_session_history(session_id: str) -> RedisChatMessageHistory:
     """
     return RedisChatMessageHistory(
         session_id=session_id,
-        redis_url=settings.redis_url,
+        url=settings.redis_url,
         ttl=settings.session_ttl_seconds,
     )
 
 
 def _get_postgres_connection_string() -> str:
-    """PGVector용 psycopg2 스타일 연결 문자열을 반환합니다.
+    """PGVector용 SQLAlchemy 연결 문자열을 반환합니다.
 
-    langchain-postgres는 psycopg2 연결 문자열을 사용하므로
-    SQLAlchemy async URL(postgresql+psycopg://)에서 변환합니다.
+    langchain-postgres는 psycopg(v3) 드라이버를 사용하므로 settings.postgres_url
+    (postgresql+psycopg://...)을 그대로 사용합니다.
     """
-    return settings.postgres_url.replace("postgresql+psycopg://", "postgresql+psycopg2://")
+    return settings.postgres_url
 
 
 def initialize_rag() -> None:
@@ -140,8 +140,12 @@ def initialize_rag() -> None:
     logger.info("Agent Ready (Redis 세션 + pgvector RAG)")
 
 
-def get_ai_response(user_query: str, user_id: str = "default") -> dict[str, Any]:
+async def get_ai_response(user_query: str, user_id: str = "default") -> dict[str, Any]:
     """사용자 쿼리에 대한 AI 응답을 생성합니다.
+
+    도구(search_order_status 등)가 async로 정의되어 있으므로 agent_executor도
+    async 경로(ainvoke)로 호출해야 한다. 동일 이벤트 루프에서 LLM/DB 호출을
+    함께 처리하므로 별도 thread offload는 불필요하다.
 
     Args:
         user_query: 사용자 메시지.
@@ -154,7 +158,7 @@ def get_ai_response(user_query: str, user_id: str = "default") -> dict[str, Any]
         return {"output": "AI가 준비되지 않았습니다.", "token_usage": None}
 
     try:
-        response = agent_executor.invoke(
+        response = await agent_executor.ainvoke(
             {"input": user_query},
             config={"configurable": {"session_id": user_id}},
         )
