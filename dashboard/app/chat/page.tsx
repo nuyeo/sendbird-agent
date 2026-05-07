@@ -102,14 +102,14 @@ export default function ChatPage() {
 
   if (!connected) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-lg border border-gray-100 w-full max-w-md space-y-6">
+      <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 flex items-center justify-center p-4">
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-lg border border-gray-100 dark:border-gray-700 w-full max-w-md space-y-6">
           <div className="text-center">
-            <div className="w-12 h-12 mx-auto mb-4 bg-indigo-50 rounded-2xl flex items-center justify-center">
-              <MessageCircle className="text-indigo-600" size={24} />
+            <div className="w-12 h-12 mx-auto mb-4 bg-indigo-50 dark:bg-indigo-950 rounded-2xl flex items-center justify-center">
+              <MessageCircle className="text-indigo-600 dark:text-indigo-400" size={24} />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">CS Chat</h1>
-            <p className="text-gray-500 text-sm mt-1">user_id로 채팅을 시작하세요</p>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">CS Chat</h1>
+            <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">user_id로 채팅을 시작하세요</p>
           </div>
 
           <div className="space-y-3">
@@ -122,7 +122,7 @@ export default function ChatPage() {
                 if (e.key === "Enter") connect();
               }}
               disabled={connecting}
-              className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50"
+              className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50 dark:disabled:bg-gray-800"
             />
             <button
               onClick={connect}
@@ -134,7 +134,7 @@ export default function ChatPage() {
           </div>
 
           {error && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-700">
+            <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950 border border-red-100 dark:border-red-900 rounded-lg text-sm text-red-700 dark:text-red-300">
               <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
               <span>{error}</span>
             </div>
@@ -145,15 +145,15 @@ export default function ChatPage() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex flex-col">
-      <header className="bg-white border-b border-gray-100 px-4 py-3 shadow-sm">
+    <main className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 flex flex-col">
+      <header className="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700 px-4 py-3 shadow-sm">
         <div className="max-w-3xl mx-auto flex items-center gap-3">
           <div className="w-8 h-8 bg-gradient-to-br from-indigo-400 to-purple-400 rounded-full flex items-center justify-center text-white text-xs font-bold">
             {userId.charAt(0).toUpperCase()}
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-900">{userId}</p>
-            <p className="text-xs text-green-600 flex items-center gap-1">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{userId}</p>
+            <p className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full" />
               연결됨
             </p>
@@ -164,7 +164,7 @@ export default function ChatPage() {
       <div className="flex-1 overflow-y-auto px-4 py-6">
         <div className="max-w-3xl mx-auto space-y-4">
           {messages.length === 0 && (
-            <div className="text-center text-gray-400 text-sm py-12">
+            <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-12">
               메시지를 입력하여 대화를 시작하세요
             </div>
           )}
@@ -177,7 +177,7 @@ export default function ChatPage() {
                 className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap break-words ${
                   m.role === "user"
                     ? "bg-indigo-600 text-white"
-                    : "bg-white text-gray-800 border border-gray-100 shadow-sm"
+                    : "bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 border border-gray-100 dark:border-gray-700 shadow-sm"
                 }`}
               >
                 {m.text}
@@ -186,24 +186,24 @@ export default function ChatPage() {
           ))}
           {typing && (
             <div className="flex justify-start">
-              <div className="bg-white border border-gray-100 shadow-sm px-4 py-3 rounded-2xl flex gap-1">
+              <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm px-4 py-3 rounded-2xl flex gap-1">
                 <span
-                  className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
+                  className="w-2 h-2 bg-gray-300 dark:bg-gray-500 rounded-full animate-bounce"
                   style={{ animationDelay: "0ms" }}
                 />
                 <span
-                  className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
+                  className="w-2 h-2 bg-gray-300 dark:bg-gray-500 rounded-full animate-bounce"
                   style={{ animationDelay: "150ms" }}
                 />
                 <span
-                  className="w-2 h-2 bg-gray-300 rounded-full animate-bounce"
+                  className="w-2 h-2 bg-gray-300 dark:bg-gray-500 rounded-full animate-bounce"
                   style={{ animationDelay: "300ms" }}
                 />
               </div>
             </div>
           )}
           {error && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-100 rounded-lg text-sm text-red-700">
+            <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950 border border-red-100 dark:border-red-900 rounded-lg text-sm text-red-700 dark:text-red-300">
               <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
               <span>{error}</span>
             </div>
@@ -212,7 +212,7 @@ export default function ChatPage() {
         </div>
       </div>
 
-      <footer className="bg-white border-t border-gray-100 px-4 py-3">
+      <footer className="bg-white dark:bg-gray-800 border-t border-gray-100 dark:border-gray-700 px-4 py-3">
         <div className="max-w-3xl mx-auto flex gap-2">
           <input
             type="text"
@@ -226,7 +226,7 @@ export default function ChatPage() {
               }
             }}
             disabled={typing}
-            className="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50"
+            className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50 dark:disabled:bg-gray-800"
           />
           <button
             onClick={send}
