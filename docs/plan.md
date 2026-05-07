@@ -457,6 +457,11 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 3. LLM 호출 타임아웃 + 재시도 (`tenacity` 이미 requirements에 있음)
 4. `/metrics` 엔드포인트 (Prometheus 포맷) — latency, token usage, concurrent connections
 5. 헬스체크 강화 (`/health`에 Redis/PostgreSQL 연결 상태 포함)
+6. 프롬프트 CoT 보강 & 정책 정합성
+   - **현상**: 후속 질문("아까 그 주문 환불 가능한 날짜 언제까지야?")에서 LLM이 `refund_calculator` 도구를 호출하지 않고 FAQ 일반론만 답변. Redis 히스토리는 동작하나 도구 활용이 약함. (PR #13 검증 중 발견)
+   - **원인 ①**: `prompts/cs_agent_v1.yaml`의 Decision Protocol에 환불 관련 흐름 가이드 부재 — 환불 질문 시 `search_order_status` → `refund_calculator` 연쇄 호출을 명시할 것.
+   - **원인 ②**: FAQ "**수령** 후 7일" vs `refund_calculator` "**구매** 후 days_passed" 정책 불일치. 수령일 정보 없으면 LLM이 구체 날짜를 컴퓨팅 못 함. orders 테이블에 `delivered_at` 추가 또는 정책 일원화 필요.
+   - **검증**: Phase 3 eval 파이프라인의 골든셋에 "이전 대화 참조 + 환불 계산" 시나리오 추가, 회귀 검증.
 
 검증: 부하 테스트 (`locust` 또는 `k6`로 동시 100 연결 시뮬레이션)
 

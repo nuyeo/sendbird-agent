@@ -97,11 +97,11 @@ class WebSocketManager:
 manager = WebSocketManager()
 
 
-async def _handle_user_message(user_id: str, message: str) -> dict[str, Any]:
+async def _handle_user_message(session_id: str, message: str) -> dict[str, Any]:
     """LLM 호출을 세마포어로 제한한 뒤 응답을 반환합니다.
 
     Args:
-        user_id: 메시지를 보낸 사용자 식별자.
+        session_id: LLM 대화 메모리 키 (연결당 unique).
         message: 사용자 메시지.
 
     Returns:
@@ -109,7 +109,7 @@ async def _handle_user_message(user_id: str, message: str) -> dict[str, Any]:
     """
     semaphore = _get_llm_semaphore()
     async with semaphore:
-        return await asyncio.to_thread(get_ai_response, message, user_id)
+        return await get_ai_response(message, session_id)
 
 
 async def _persist_chat_log(
@@ -212,10 +212,11 @@ async def chat_websocket(
             message_id = generate_request_id()
             bind_request_context(message_id)
 
+            # 일회성 세션: 응답은 현재 연결로만 반환 (새 탭/새로고침 = 새 대화)
             await websocket.send_json({"type": "typing"})
 
             start_time = time.time()
-            result = await _handle_user_message(user_id, user_message)
+            result = await _handle_user_message(connection_id, user_message)
             latency_ms = round((time.time() - start_time) * 1000)
 
             logger.info("AI 응답 생성 완료", user_id=user_id, latency_ms=latency_ms)
