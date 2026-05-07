@@ -58,17 +58,25 @@ export default function ChatPage() {
         setConnecting(false);
       };
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data) as { type: string; message?: string };
+        let data: { type?: unknown; message?: unknown };
+        try {
+          data = JSON.parse(event.data);
+        } catch {
+          setTyping(false);
+          setError("서버 메시지 파싱 실패");
+          return;
+        }
+        const message = typeof data.message === "string" ? data.message : "";
         if (data.type === "typing") {
           setTyping(true);
         } else if (data.type === "ai_response") {
           setTyping(false);
           setMessages((prev) => [
             ...prev,
-            { id: crypto.randomUUID(), role: "ai", text: data.message ?? "" },
+            { id: crypto.randomUUID(), role: "ai", text: message },
           ]);
         } else if (data.type === "error") {
-          setError(data.message ?? "Unknown error");
+          setError(message || "Unknown error");
           setTyping(false);
         }
       };
@@ -91,8 +99,15 @@ export default function ChatPage() {
 
   const send = () => {
     const text = input.trim();
-    if (!text || !connected || !wsRef.current) return;
-    wsRef.current.send(JSON.stringify({ type: "user_message", message: text }));
+    const ws = wsRef.current;
+    // connected 플래그가 false로 바뀌기 전에 socket이 CLOSING/CLOSED로 갈 수 있어 readyState로 한 번 더 확인
+    if (!text || !connected || !ws || ws.readyState !== WebSocket.OPEN) return;
+    try {
+      ws.send(JSON.stringify({ type: "user_message", message: text }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "메시지 전송 실패");
+      return;
+    }
     setMessages((prev) => [
       ...prev,
       { id: crypto.randomUUID(), role: "user", text },

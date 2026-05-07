@@ -140,7 +140,7 @@ def initialize_rag() -> None:
     logger.info("Agent Ready (Redis 세션 + pgvector RAG)")
 
 
-async def get_ai_response(user_query: str, session_id: str = "default") -> dict[str, Any]:
+async def get_ai_response(user_query: str, session_id: str) -> dict[str, Any]:
     """사용자 쿼리에 대한 AI 응답을 생성합니다.
 
     도구(search_order_status 등)가 async로 정의되어 있으므로 agent_executor도
