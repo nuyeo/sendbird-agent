@@ -4,6 +4,9 @@ pgvector==0.3.6
 psycopg[binary,pool]==3.3.3
 redis==7.4.0
 
+# Phase C: 신뢰성 & 관측성
+prometheus-client==0.24.1
+
 aiohappyeyeballs==2.6.1
 aiohttp==3.13.2
 aiosignal==1.4.0
