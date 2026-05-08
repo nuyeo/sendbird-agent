@@ -7,6 +7,7 @@ from typing import Any
 
 from langchain.agents import AgentExecutor, create_tool_calling_agent
 from langchain.tools.retriever import create_retriever_tool
+from langchain_community.callbacks import get_openai_callback
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_community.document_loaders import TextLoader
 from langchain_core.prompts import ChatPromptTemplate
@@ -113,7 +114,15 @@ def initialize_rag() -> None:
     ]
 
     # 4. LLM 설정
-    llm = ChatOpenAI(model=settings.llm_model, temperature=settings.llm_temperature)
+    # timeout/max_retries를 명시해 RateLimit/일시 네트워크 오류에서 호출이 즉시
+    # 실패하지 않도록 한다. LangChain ChatOpenAI는 내부적으로 OpenAI SDK의 retry를
+    # 활용해 지수 백오프를 수행한다.
+    llm = ChatOpenAI(
+        model=settings.llm_model,
+        temperature=settings.llm_temperature,
+        timeout=settings.llm_timeout_seconds,
+        max_retries=settings.llm_max_retries,
+    )
 
     # 5. 프롬프트 로드 (YAML 외부 파일)
     prompt_config = load_prompt("cs_agent_v1")
@@ -147,6 +156,9 @@ async def get_ai_response(user_query: str, session_id: str) -> dict[str, Any]:
     async 경로(ainvoke)로 호출해야 한다. 동일 이벤트 루프에서 LLM/DB 호출을
     함께 처리하므로 별도 thread offload는 불필요하다.
 
+    토큰 사용량은 langchain_community.callbacks.get_openai_callback로 수집한다.
+    이 컨텍스트 매니저는 contextvars 기반이라 async 흐름에서도 정상 동작한다.
+
     Args:
         user_query: 사용자 메시지.
         session_id: LLM 대화 메모리 키. WebSocket 연결마다 발급되어,
@@ -155,16 +167,28 @@ async def get_ai_response(user_query: str, session_id: str) -> dict[str, Any]:
 
     Returns:
         {"output": str, "token_usage": dict | None} 형태의 딕셔너리.
+        token_usage는 prompt/completion/total tokens를 포함하며, 사용량 집계가
+        실패한 경우 None.
     """
     if agent_executor is None:
         return {"output": "AI가 준비되지 않았습니다.", "token_usage": None}
 
     try:
-        response = await agent_executor.ainvoke(
-            {"input": user_query},
-            config={"configurable": {"session_id": session_id}},
+        with get_openai_callback() as cb:
+            response = await agent_executor.ainvoke(
+                {"input": user_query},
+                config={"configurable": {"session_id": session_id}},
+            )
+        token_usage = (
+            {
+                "prompt_tokens": cb.prompt_tokens,
+                "completion_tokens": cb.completion_tokens,
+                "total_tokens": cb.total_tokens,
+            }
+            if cb.total_tokens > 0
+            else None
         )
-        return {"output": response["output"], "token_usage": None}
+        return {"output": response["output"], "token_usage": token_usage}
     except Exception:
         logger.exception("AI 응답 생성 중 오류")
         return {"output": "죄송합니다. 잠시 후 다시 시도해 주세요.", "token_usage": None}

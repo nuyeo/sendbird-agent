@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     chunk_size: int = 500
     chunk_overlap: int = 0
 
+    # LLM 호출 신뢰성 (단일 요청 단위)
+    llm_timeout_seconds: float = Field(30.0, gt=0)
+    llm_max_retries: int = Field(3, ge=0)
+
     # PostgreSQL
     postgres_url: str = "postgresql+psycopg://cs_agent:cs_agent_pw@localhost:5432/cs_agent"
 
