@@ -6,9 +6,10 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import jwt
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from app.api.rate_limit import limiter
 from app.config import settings
 
 _JWT_ALGORITHM = "HS256"
@@ -78,14 +79,19 @@ def verify_token(token: str) -> str:
 
 
 @router.post("/api/auth/dev-token", response_model=DevTokenResponse)
-def issue_dev_token(request: DevTokenRequest) -> DevTokenResponse:
+@limiter.limit(settings.rate_limit_dev_token)
+def issue_dev_token(request: Request, body: DevTokenRequest) -> DevTokenResponse:
     """dev 환경에서 임의 user_id로 JWT를 발급합니다.
 
     debug=True일 때만 활성화되는 개발용 엔드포인트입니다. 프로덕션에서는
     대시보드 로그인 흐름이 발급을 담당하도록 별도 PR에서 교체합니다.
 
+    slowapi가 첫 인자에서 starlette Request를 추출하므로 시그니처에 명시한다.
+    실제 본문은 `body` 인자로 받는다.
+
     Args:
-        request: user_id를 담은 요청 본문.
+        request: starlette 요청 객체 (slowapi 의존성).
+        body: user_id를 담은 요청 본문.
 
     Returns:
         access_token과 만료 시간(초).
@@ -96,5 +102,5 @@ def issue_dev_token(request: DevTokenRequest) -> DevTokenResponse:
     if not settings.debug:
         raise HTTPException(status_code=404, detail="Not Found")
 
-    token, expires_in = issue_token(request.user_id)
+    token, expires_in = issue_token(body.user_id)
     return DevTokenResponse(access_token=token, expires_in=expires_in)

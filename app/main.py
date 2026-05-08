@@ -7,6 +7,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy import text
 
 from app.agent.rag import initialize_rag
@@ -15,6 +18,7 @@ from app.api.chat_ws import router as chat_ws_router
 from app.api.health import router as health_router
 from app.api.logs import router as logs_router
 from app.api.metrics import router as metrics_router
+from app.api.rate_limit import limiter
 from app.observability.logger import get_logger, setup_logging
 from app.storage.database import engine
 from app.storage.redis_client import close_redis, initialize_redis
@@ -66,6 +70,11 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
+
+# slowapi: limiter 인스턴스 등록 + 초과 응답 핸들러 + 미들웨어
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

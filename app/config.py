@@ -40,6 +40,12 @@ class Settings(BaseSettings):
     # 동시 LLM 호출 제한 (단일 워커 기준)
     max_concurrent_llm: int = Field(50, ge=1)
 
+    # Rate limiting (REST 엔드포인트). 테스트에서는 false로 비활성화.
+    rate_limit_enabled: bool = True
+    rate_limit_dev_token: str = "10/minute"
+    rate_limit_logs_read: str = "60/minute"
+    rate_limit_logs_feedback: str = "30/minute"
+
     # Server
     debug: bool = False
 

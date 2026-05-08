@@ -21,3 +21,16 @@ def test_llm_reliability_defaults() -> None:
     """LLM 호출 신뢰성 기본값이 합리적인 범위인지 확인합니다."""
     assert settings.llm_timeout_seconds > 0
     assert settings.llm_max_retries >= 0
+
+
+def test_rate_limit_settings_present() -> None:
+    """rate limit 설정이 slowapi 표기법(예: '10/minute')으로 들어왔는지 확인."""
+    for value in (
+        settings.rate_limit_dev_token,
+        settings.rate_limit_logs_read,
+        settings.rate_limit_logs_feedback,
+    ):
+        assert "/" in value
+        count, _, window = value.partition("/")
+        assert count.isdigit()
+        assert window in {"second", "minute", "hour", "day"}
