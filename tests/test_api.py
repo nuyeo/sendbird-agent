@@ -109,6 +109,22 @@ def test_metrics_endpoint_exposes_prometheus_format(client: TestClient) -> None:
     assert "ai_response_latency_seconds" in body
 
 
+def test_metrics_requires_bearer_token_when_configured(client: TestClient) -> None:
+    """metrics_bearer_token이 설정되면 /metrics는 인증 헤더를 요구해야 합니다."""
+    with patch("app.api.metrics.settings.metrics_bearer_token", "secret-token-123"):
+        # 헤더 없음 → 401
+        unauthorized = client.get("/metrics")
+        assert unauthorized.status_code == 401
+
+        # 잘못된 토큰 → 401
+        wrong = client.get("/metrics", headers={"Authorization": "Bearer nope"})
+        assert wrong.status_code == 401
+
+        # 올바른 토큰 → 200
+        ok = client.get("/metrics", headers={"Authorization": "Bearer secret-token-123"})
+        assert ok.status_code == 200
+
+
 @patch("app.api.logs.chat_log_repo.list_chat_logs", new_callable=AsyncMock, return_value=[])
 def test_get_chat_logs_empty(mock_list, client: TestClient) -> None:
     """빈 로그 조회 테스트."""

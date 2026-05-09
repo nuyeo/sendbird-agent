@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     rate_limit_logs_read: str = "60/minute"
     rate_limit_logs_feedback: str = "30/minute"
 
+    # /metrics 엔드포인트 보호용 bearer token. 빈 값이면 가드를 비활성화한다 —
+    # 운영 환경에서는 ingress/LB로 차단하거나 토큰을 설정해 노출을 막는다.
+    metrics_bearer_token: str = ""
+
     # Server
     debug: bool = False
 
