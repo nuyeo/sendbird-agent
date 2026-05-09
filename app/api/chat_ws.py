@@ -229,7 +229,10 @@ async def chat_websocket(
 
             token_usage = result.get("token_usage")
             record_token_usage(token_usage)
-            ai_response_total.labels(status="success").inc()
+            # get_ai_response가 LLM 예외를 흡수하고 fallback 메시지를 돌려주므로,
+            # 외부 except 블록만으로는 실패를 감지할 수 없다. error 플래그로 분기한다.
+            status_label = "error" if result.get("error") else "success"
+            ai_response_total.labels(status=status_label).inc()
 
             logger.info("AI 응답 생성 완료", user_id=user_id, latency_ms=latency_ms)
 

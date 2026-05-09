@@ -1,6 +1,12 @@
-"""JWT 발급/검증 및 dev용 토큰 엔드포인트."""
+"""JWT 발급/검증 및 dev용 토큰 엔드포인트.
 
-from __future__ import annotations
+NOTE: 이 모듈은 의도적으로 `from __future__ import annotations`를 사용하지
+않는다. `@limiter.limit` 데코레이터가 함수를 래핑하면서 래퍼의 `__globals__`이
+`slowapi.extension` 모듈을 가리키게 되어, FastAPI가 문자열 어노테이션을
+해석할 때 프로젝트 정의 타입(예: `DevTokenRequest`)을 찾지 못해 본문을 query로
+오인하는 422 오류가 발생한다. 실제 클래스 객체가 어노테이션에 그대로 들어가도록
+future annotations를 끄면 회피된다.
+"""
 
 from datetime import UTC, datetime, timedelta
 from typing import Any

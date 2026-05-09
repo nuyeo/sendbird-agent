@@ -50,9 +50,14 @@ async def health(response: Response) -> dict[str, object]:
         postgres_status = "unavailable"
         logger.exception("PostgreSQL 헬스체크 실패")
 
-    redis_status: Literal["ok", "unavailable"] = (
-        "ok" if await redis_client.ping() else "unavailable"
-    )
+    redis_status: Literal["ok", "unavailable"] = "ok"
+    try:
+        if not await redis_client.ping():
+            redis_status = "unavailable"
+    except Exception:
+        # 연결 거부/타임아웃 등 예외도 readiness 실패로 처리해 503을 반환한다.
+        redis_status = "unavailable"
+        logger.exception("Redis 헬스체크 실패")
 
     overall = "ok" if postgres_status == "ok" and redis_status == "ok" else "degraded"
     if overall != "ok":

@@ -166,12 +166,18 @@ async def get_ai_response(user_query: str, session_id: str) -> dict[str, Any]:
             영속 로그(chat_logs)는 user_id로, LLM 컨텍스트는 session_id로 관리.
 
     Returns:
-        {"output": str, "token_usage": dict | None} 형태의 딕셔너리.
-        token_usage는 prompt/completion/total tokens를 포함하며, 사용량 집계가
-        실패한 경우 None.
+        {"output": str, "token_usage": dict | None, "error": bool} 형태의
+        딕셔너리. token_usage는 prompt/completion/total tokens를 포함하며,
+        사용량 집계가 실패한 경우 None. error는 LLM 호출이 실패했거나 에이전트가
+        초기화되지 않아 fallback 메시지를 반환한 경우 True가 된다 — 호출자가
+        성공/실패 카운터를 분리할 때 사용한다.
     """
     if agent_executor is None:
-        return {"output": "AI가 준비되지 않았습니다.", "token_usage": None}
+        return {
+            "output": "AI가 준비되지 않았습니다.",
+            "token_usage": None,
+            "error": True,
+        }
 
     try:
         with get_openai_callback() as cb:
@@ -188,7 +194,11 @@ async def get_ai_response(user_query: str, session_id: str) -> dict[str, Any]:
             if cb.total_tokens > 0
             else None
         )
-        return {"output": response["output"], "token_usage": token_usage}
+        return {"output": response["output"], "token_usage": token_usage, "error": False}
     except Exception:
         logger.exception("AI 응답 생성 중 오류")
-        return {"output": "죄송합니다. 잠시 후 다시 시도해 주세요.", "token_usage": None}
+        return {
+            "output": "죄송합니다. 잠시 후 다시 시도해 주세요.",
+            "token_usage": None,
+            "error": True,
+        }

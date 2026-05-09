@@ -81,6 +81,23 @@ def test_health_returns_503_when_redis_down(client: TestClient) -> None:
     assert data["dependencies"]["postgres"] == "ok"
 
 
+def test_health_returns_503_when_redis_raises(client: TestClient) -> None:
+    """Redis ping이 ConnectionError를 던져도 /health는 500이 아닌 503을 반환합니다."""
+    with (
+        _patch_health_engine_ok(),
+        patch(
+            "app.api.health.redis_client.ping",
+            new_callable=AsyncMock,
+            side_effect=ConnectionError("connection refused"),
+        ),
+    ):
+        response = client.get("/health")
+    assert response.status_code == 503
+    data = response.json()
+    assert data["status"] == "degraded"
+    assert data["dependencies"]["redis"] == "unavailable"
+
+
 def test_metrics_endpoint_exposes_prometheus_format(client: TestClient) -> None:
     """/metrics는 Prometheus exposition format으로 메트릭을 노출해야 합니다."""
     response = client.get("/metrics")

@@ -23,10 +23,13 @@ ai_token_usage_total = Counter(
     labelnames=("type",),
 )
 
-# 현재 활성 WebSocket 연결 수 (단일 워커 기준).
+# 현재 활성 WebSocket 연결 수 (워커 프로세스 단위).
+# 멀티 워커 배포에서는 워커별로 독립된 시리즈로 노출되므로, 합산값이 필요하면
+# prometheus_client multiprocess 모드(PROMETHEUS_MULTIPROC_DIR 환경변수)를 활성화
+# 하거나 Prometheus 쿼리에서 sum()으로 집계해야 한다.
 ws_active_connections = Gauge(
     "ws_active_connections",
-    "현재 워커 프로세스의 활성 WebSocket 연결 수",
+    "현재 워커 프로세스의 활성 WebSocket 연결 수 (per-process 게이지)",
 )
 
 # AI 응답 결과별 카운터 (성공/오류 분리).
