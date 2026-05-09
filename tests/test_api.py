@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,12 +31,98 @@ def client():
             yield c
 
 
-def test_health_check(client: TestClient) -> None:
-    """헬스체크 엔드포인트 테스트."""
+def test_root_returns_liveness(client: TestClient) -> None:
+    """루트 엔드포인트는 의존성 검사 없이 정적 응답을 반환해야 합니다."""
     response = client.get("/")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "Server is running"
+
+
+def _patch_health_engine_ok() -> Any:
+    """app.api.health.engine.connect()가 정상 동작하도록 mock합니다.
+
+    engine.connect()는 sync 메서드이므로 MagicMock을 사용하고, 반환되는
+    AsyncConnection 객체만 async context manager로 동작하도록 만듭니다.
+    """
+    mock_conn = AsyncMock()
+    mock_conn.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_conn.__aexit__ = AsyncMock(return_value=None)
+    mock_conn.execute = AsyncMock(return_value=None)
+    mock_engine = MagicMock()
+    mock_engine.connect.return_value = mock_conn
+    return patch("app.api.health.engine", mock_engine)
+
+
+def test_health_returns_dependency_status(client: TestClient) -> None:
+    """/health는 PG/Redis 상태를 포함해 readiness를 보고해야 합니다."""
+    with (
+        _patch_health_engine_ok(),
+        patch("app.api.health.redis_client.ping", new_callable=AsyncMock, return_value=True),
+    ):
+        response = client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["dependencies"] == {"postgres": "ok", "redis": "ok"}
+
+
+def test_health_returns_503_when_redis_down(client: TestClient) -> None:
+    """Redis ping이 실패하면 /health는 503과 함께 degraded 상태를 반환합니다."""
+    with (
+        _patch_health_engine_ok(),
+        patch("app.api.health.redis_client.ping", new_callable=AsyncMock, return_value=False),
+    ):
+        response = client.get("/health")
+    assert response.status_code == 503
+    data = response.json()
+    assert data["status"] == "degraded"
+    assert data["dependencies"]["redis"] == "unavailable"
+    assert data["dependencies"]["postgres"] == "ok"
+
+
+def test_health_returns_503_when_redis_raises(client: TestClient) -> None:
+    """Redis ping이 ConnectionError를 던져도 /health는 500이 아닌 503을 반환합니다."""
+    with (
+        _patch_health_engine_ok(),
+        patch(
+            "app.api.health.redis_client.ping",
+            new_callable=AsyncMock,
+            side_effect=ConnectionError("connection refused"),
+        ),
+    ):
+        response = client.get("/health")
+    assert response.status_code == 503
+    data = response.json()
+    assert data["status"] == "degraded"
+    assert data["dependencies"]["redis"] == "unavailable"
+
+
+def test_metrics_endpoint_exposes_prometheus_format(client: TestClient) -> None:
+    """/metrics는 Prometheus exposition format으로 메트릭을 노출해야 합니다."""
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    body = response.text
+    # WebSocket 활성 연결 게이지가 등록되어 있어야 함
+    assert "ws_active_connections" in body
+    # AI latency 히스토그램이 등록되어 있어야 함
+    assert "ai_response_latency_seconds" in body
+
+
+def test_metrics_requires_bearer_token_when_configured(client: TestClient) -> None:
+    """metrics_bearer_token이 설정되면 /metrics는 인증 헤더를 요구해야 합니다."""
+    with patch("app.api.metrics.settings.metrics_bearer_token", "secret-token-123"):
+        # 헤더 없음 → 401
+        unauthorized = client.get("/metrics")
+        assert unauthorized.status_code == 401
+
+        # 잘못된 토큰 → 401
+        wrong = client.get("/metrics", headers={"Authorization": "Bearer nope"})
+        assert wrong.status_code == 401
+
+        # 올바른 토큰 → 200
+        ok = client.get("/metrics", headers={"Authorization": "Bearer secret-token-123"})
+        assert ok.status_code == 200
 
 
 @patch("app.api.logs.chat_log_repo.list_chat_logs", new_callable=AsyncMock, return_value=[])

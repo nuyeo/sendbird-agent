@@ -12,6 +12,12 @@ from app.agent.rag import get_ai_response
 from app.api.auth import verify_token
 from app.config import settings
 from app.observability.logger import bind_request_context, generate_request_id, get_logger
+from app.observability.metrics import (
+    ai_response_latency_seconds,
+    ai_response_total,
+    record_token_usage,
+    ws_active_connections,
+)
 from app.storage.database import AsyncSessionLocal
 from app.storage.repositories import chat_log_repo
 
@@ -185,6 +191,7 @@ async def chat_websocket(
         return
 
     await manager.connect(user_id, websocket)
+    ws_active_connections.inc()
     logger.info("WebSocket 연결 수립", user_id=user_id)
 
     try:
@@ -216,8 +223,16 @@ async def chat_websocket(
             await websocket.send_json({"type": "typing"})
 
             start_time = time.time()
-            result = await _handle_user_message(connection_id, user_message)
+            with ai_response_latency_seconds.time():
+                result = await _handle_user_message(connection_id, user_message)
             latency_ms = round((time.time() - start_time) * 1000)
+
+            token_usage = result.get("token_usage")
+            record_token_usage(token_usage)
+            # get_ai_response가 LLM 예외를 흡수하고 fallback 메시지를 돌려주므로,
+            # 외부 except 블록만으로는 실패를 감지할 수 없다. error 플래그로 분기한다.
+            status_label = "error" if result.get("error") else "success"
+            ai_response_total.labels(status=status_label).inc()
 
             logger.info("AI 응답 생성 완료", user_id=user_id, latency_ms=latency_ms)
 
@@ -227,7 +242,7 @@ async def chat_websocket(
                 question=user_message,
                 answer=result["output"],
                 latency_ms=latency_ms,
-                token_usage=result.get("token_usage"),
+                token_usage=token_usage,
             )
 
             await websocket.send_json({"type": "ai_response", "message": result["output"]})
@@ -235,6 +250,8 @@ async def chat_websocket(
     except WebSocketDisconnect:
         logger.info("WebSocket 연결 종료", user_id=user_id)
     except Exception:
+        ai_response_total.labels(status="error").inc()
         logger.exception("WebSocket 처리 중 오류", user_id=user_id)
     finally:
         await manager.disconnect(user_id, websocket)
+        ws_active_connections.dec()

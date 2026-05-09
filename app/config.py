@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     chunk_size: int = 500
     chunk_overlap: int = 0
 
+    # LLM 호출 신뢰성 (단일 요청 단위)
+    llm_timeout_seconds: float = Field(30.0, gt=0)
+    llm_max_retries: int = Field(3, ge=0)
+
     # PostgreSQL
     postgres_url: str = "postgresql+psycopg://cs_agent:cs_agent_pw@localhost:5432/cs_agent"
 
@@ -35,6 +39,16 @@ class Settings(BaseSettings):
 
     # 동시 LLM 호출 제한 (단일 워커 기준)
     max_concurrent_llm: int = Field(50, ge=1)
+
+    # Rate limiting (REST 엔드포인트). 테스트에서는 false로 비활성화.
+    rate_limit_enabled: bool = True
+    rate_limit_dev_token: str = "10/minute"
+    rate_limit_logs_read: str = "60/minute"
+    rate_limit_logs_feedback: str = "30/minute"
+
+    # /metrics 엔드포인트 보호용 bearer token. 빈 값이면 가드를 비활성화한다 —
+    # 운영 환경에서는 ingress/LB로 차단하거나 토큰을 설정해 노출을 막는다.
+    metrics_bearer_token: str = ""
 
     # Server
     debug: bool = False
