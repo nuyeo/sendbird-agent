@@ -59,14 +59,20 @@ def _get_postgres_connection_string() -> str:
     return settings.postgres_url
 
 
-def initialize_rag() -> None:
-    """RAG 시스템과 에이전트를 초기화합니다."""
+async def initialize_rag() -> None:
+    """RAG 시스템과 에이전트를 초기화합니다.
+
+    PGVector는 async_mode=True로 생성한다. 에이전트가 ainvoke 경로로 호출되면
+    내부적으로 asimilarity_search가 실행되는데, sync 모드의 PGVector는 async
+    엔진이 없어 AssertionError로 실패하기 때문이다. 초기 인덱싱 체크/적재 또한
+    같은 인스턴스에서 await 호출로 수행한다.
+    """
     global agent_executor, agent_executor_base
 
     base_dir = Path(__file__).resolve().parent.parent.parent
     file_path = str(base_dir / "data" / "faq.txt")
 
-    # 1. 임베딩 & pgvector 벡터 DB
+    # 1. 임베딩 & pgvector 벡터 DB (async 모드)
     embeddings = OpenAIEmbeddings()
     connection_string = _get_postgres_connection_string()
 
@@ -75,10 +81,11 @@ def initialize_rag() -> None:
         collection_name=_VECTOR_COLLECTION,
         connection=connection_string,
         use_jsonb=True,
+        async_mode=True,
     )
 
     # 벡터 DB가 비어 있으면 FAQ 문서를 인덱싱
-    existing = db.similarity_search("test", k=1)
+    existing = await db.asimilarity_search("test", k=1)
     if not existing:
         logger.info("FAQ 문서를 pgvector에 최초 인덱싱합니다...")
         if not Path(file_path).exists():
@@ -91,7 +98,7 @@ def initialize_rag() -> None:
             chunk_overlap=settings.chunk_overlap,
         )
         texts = text_splitter.split_documents(documents)
-        db.add_documents(texts)
+        await db.aadd_documents(texts)
         logger.info("FAQ 인덱싱 완료: %d 청크", len(texts))
     else:
         logger.info("기존 pgvector 벡터 DB를 불러옵니다...")

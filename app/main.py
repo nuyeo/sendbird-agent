@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # AI 에이전트 초기화
     try:
-        initialize_rag()
+        await initialize_rag()
         logger.info("AI 에이전트 초기화 완료")
     except Exception:
         logger.exception("AI 에이전트 초기화 실패")
