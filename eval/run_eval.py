@@ -1,20 +1,79 @@
-"""Golden QA Set 기반 에이전트 평가 스크립트."""
+"""Golden QA Set 기반 에이전트 평가 스크립트.
+
+품질(LLM-as-Judge 점수)뿐 아니라 케이스별 latency, OpenAI 토큰 사용량, 비용을
+함께 캡처해 Phase D(토큰 비용 최적화) before/after 비교용 베이스라인을 산출한다.
+집계 요약은 `eval/baseline-summary.json`으로 저장된다.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
 from dotenv import load_dotenv
+from langchain_community.callbacks import get_openai_callback
 from langchain_openai import ChatOpenAI
 
 _BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_BASE_DIR))
 load_dotenv()
 
+# Windows에서 psycopg async는 SelectorEventLoop를 요구하므로 정책을 강제한다.
+# 도구(search_order_status, cancel_order)가 async로 DB를 호출하기 때문에 필요.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+# OpenAI 모델별 단가 (USD per 1M tokens). 가격 변동 시 여기만 갱신.
+# 출처: https://openai.com/api/pricing (2024-12 기준)
+_PRICING_PER_MILLION_USD: dict[str, dict[str, float]] = {
+    "gpt-4o-mini": {"input": 0.150, "output": 0.600},
+    "gpt-4o": {"input": 2.500, "output": 10.000},
+    "gpt-3.5-turbo": {"input": 0.500, "output": 1.500},
+}
+
 _judge_llm: ChatOpenAI | None = None
+
+
+def _compute_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """OpenAI 호출 1회의 USD 비용을 계산합니다.
+
+    Args:
+        model: 모델 이름 (settings.llm_model 기준).
+        prompt_tokens: 입력 토큰 수.
+        completion_tokens: 출력 토큰 수.
+
+    Returns:
+        USD 비용. 단가표에 없는 모델이면 0.0.
+    """
+    pricing = _PRICING_PER_MILLION_USD.get(model)
+    if pricing is None:
+        return 0.0
+    return (prompt_tokens * pricing["input"] + completion_tokens * pricing["output"]) / 1_000_000
+
+
+def _percentile(values: list[float], p: float) -> float:
+    """선형 보간 기반 백분위수를 계산합니다.
+
+    Args:
+        values: 수치 리스트.
+        p: 0.0 ~ 1.0 사이의 백분위 (예: p95는 0.95).
+
+    Returns:
+        백분위 값. 빈 리스트면 0.0.
+    """
+    if not values:
+        return 0.0
+    sorted_vals = sorted(values)
+    k = (len(sorted_vals) - 1) * p
+    f = int(k)
+    c = min(f + 1, len(sorted_vals) - 1)
+    if f == c:
+        return float(sorted_vals[f])
+    return sorted_vals[f] + (sorted_vals[c] - sorted_vals[f]) * (k - f)
 
 
 def _get_judge_llm() -> ChatOpenAI:
@@ -31,30 +90,49 @@ def _load_golden_set() -> list[dict]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _init_agent() -> None:
+async def _init_agent() -> None:
     """평가용 에이전트를 초기화합니다."""
     from app.agent.rag import agent_executor_base, initialize_rag
 
     if agent_executor_base is None:
-        initialize_rag()
+        await initialize_rag()
 
 
-def _call_agent(user_query: str) -> dict:
-    """에이전트를 호출하고 응답과 중간 단계를 반환합니다.
+async def _call_agent(user_query: str) -> dict:
+    """에이전트를 호출하고 응답, 도구 호출, latency, 토큰 사용량, 비용을 반환합니다.
+
+    search_order_status / cancel_order 도구가 async로 정의되어 있으므로 반드시
+    ainvoke 경로로 호출해야 한다 (sync invoke는 StructuredTool에서 NotImplementedError).
 
     Returns:
-        {"output": str, "tools_called": list[str]} 형태의 딕셔너리.
+        {
+            "output": str,
+            "tools_called": list[str],
+            "latency_ms": int,
+            "token_usage": dict | None,
+            "cost_usd": float,
+        }
     """
     from app.agent.rag import agent_executor_base
+    from app.config import settings
 
     if agent_executor_base is None:
-        return {"output": "에이전트 초기화 실패", "tools_called": []}
+        return {
+            "output": "에이전트 초기화 실패",
+            "tools_called": [],
+            "latency_ms": 0,
+            "token_usage": None,
+            "cost_usd": 0.0,
+        }
 
     # return_intermediate_steps를 임시 활성화하여 tool 호출 정보를 얻음
     original_flag = agent_executor_base.return_intermediate_steps
     try:
         agent_executor_base.return_intermediate_steps = True
-        result = agent_executor_base.invoke({"input": user_query})
+        start = time.perf_counter()
+        with get_openai_callback() as cb:
+            result = await agent_executor_base.ainvoke({"input": user_query})
+        latency_ms = round((time.perf_counter() - start) * 1000)
     finally:
         agent_executor_base.return_intermediate_steps = original_flag
 
@@ -66,7 +144,23 @@ def _call_agent(user_query: str) -> dict:
             if hasattr(action, "tool"):
                 tools_called.append(action.tool)
 
-    return {"output": result.get("output", ""), "tools_called": tools_called}
+    token_usage: dict[str, int] | None = None
+    cost_usd = 0.0
+    if cb.total_tokens > 0:
+        token_usage = {
+            "prompt_tokens": cb.prompt_tokens,
+            "completion_tokens": cb.completion_tokens,
+            "total_tokens": cb.total_tokens,
+        }
+        cost_usd = _compute_cost_usd(settings.llm_model, cb.prompt_tokens, cb.completion_tokens)
+
+    return {
+        "output": result.get("output", ""),
+        "tools_called": tools_called,
+        "latency_ms": latency_ms,
+        "token_usage": token_usage,
+        "cost_usd": cost_usd,
+    }
 
 
 def _judge_tool_accuracy(expected_tool: str | None, tools_called: list[str]) -> float:
@@ -138,18 +232,22 @@ def _judge_with_llm(
         return {c: 0.0 for c in eval_criteria}
 
 
-def _evaluate_test_case(tc: dict) -> dict:
+async def _evaluate_test_case(tc: dict) -> dict:
     """단일 테스트 케이스를 평가합니다."""
     print(f"\n{'=' * 60}")
     print(f"[{tc['id']}] ({tc['category']}) {tc['user_query'][:50]}")
     print(f"{'=' * 60}")
 
-    result = _call_agent(tc["user_query"])
+    result = await _call_agent(tc["user_query"])
     actual_output = result["output"]
     tools_called = result["tools_called"]
+    latency_ms = result["latency_ms"]
+    token_usage = result["token_usage"]
+    cost_usd = result["cost_usd"]
 
     print(f"  도구 호출: {tools_called}")
     print(f"  응답: {actual_output[:100]}...")
+    print(f"  지연: {latency_ms}ms, 토큰: {token_usage}, 비용: ${cost_usd:.6f}")
 
     scores: dict[str, float] = {}
 
@@ -179,6 +277,9 @@ def _evaluate_test_case(tc: dict) -> dict:
         "tools_called": tools_called,
         "scores": scores,
         "avg_score": avg_score,
+        "latency_ms": latency_ms,
+        "token_usage": token_usage,
+        "cost_usd": cost_usd,
     }
 
 
@@ -215,28 +316,136 @@ def _print_report(results: list[dict]) -> dict:
     return summary
 
 
-def run_evaluation() -> dict:
+def _compute_baseline_summary(results: list[dict]) -> dict:
+    """품질/지연/비용을 한 번에 집계한 베이스라인 요약을 반환합니다.
+
+    Phase D before/after 비교용. 결과는 baseline-summary.json으로 저장된다.
+
+    Args:
+        results: _evaluate_test_case 반환값 리스트.
+
+    Returns:
+        품질/지연/비용 섹션을 포함하는 요약 딕셔너리.
+    """
+    from app.config import settings
+
+    quality_by_category: dict[str, list[float]] = defaultdict(list)
+    all_quality: list[float] = []
+    latencies: list[float] = []
+    prompt_tokens_list: list[int] = []
+    completion_tokens_list: list[int] = []
+    total_tokens_list: list[int] = []
+    costs: list[float] = []
+
+    for r in results:
+        quality_by_category[r["category"]].append(r["avg_score"])
+        all_quality.append(r["avg_score"])
+        if r.get("latency_ms"):
+            latencies.append(r["latency_ms"])
+        tu = r.get("token_usage")
+        if tu:
+            prompt_tokens_list.append(tu["prompt_tokens"])
+            completion_tokens_list.append(tu["completion_tokens"])
+            total_tokens_list.append(tu["total_tokens"])
+        if r.get("cost_usd"):
+            costs.append(r["cost_usd"])
+
+    avg_cost = sum(costs) / len(costs) if costs else 0.0
+
+    return {
+        "model": settings.llm_model,
+        "n_cases": len(results),
+        "quality": {
+            "by_category": {c: round(sum(s) / len(s), 3) for c, s in quality_by_category.items()},
+            "overall": round(sum(all_quality) / len(all_quality), 3) if all_quality else 0.0,
+        },
+        "latency_ms": {
+            "avg": round(sum(latencies) / len(latencies)) if latencies else 0,
+            "p50": round(_percentile(latencies, 0.5)),
+            "p95": round(_percentile(latencies, 0.95)),
+            "min": int(min(latencies)) if latencies else 0,
+            "max": int(max(latencies)) if latencies else 0,
+        },
+        "cost": {
+            "avg_prompt_tokens": (
+                round(sum(prompt_tokens_list) / len(prompt_tokens_list))
+                if prompt_tokens_list
+                else 0
+            ),
+            "avg_completion_tokens": (
+                round(sum(completion_tokens_list) / len(completion_tokens_list))
+                if completion_tokens_list
+                else 0
+            ),
+            "avg_total_tokens": (
+                round(sum(total_tokens_list) / len(total_tokens_list)) if total_tokens_list else 0
+            ),
+            "avg_cost_usd": round(avg_cost, 6),
+            "projected_cost_per_1k_messages_usd": round(avg_cost * 1000, 4),
+            "total_cost_usd": round(sum(costs), 6),
+        },
+    }
+
+
+def _print_baseline_summary(summary: dict) -> None:
+    """베이스라인 요약을 사람이 읽기 쉽게 출력합니다."""
+    print("\n" + "=" * 60)
+    print("  베이스라인 요약 (Phase D before)")
+    print("=" * 60)
+    print(f"  모델: {summary['model']}  케이스 수: {summary['n_cases']}")
+
+    q = summary["quality"]
+    print("\n  [품질] LLM-as-Judge 점수 (0.0~1.0)")
+    for cat, score in sorted(q["by_category"].items()):
+        print(f"    {cat:15s}: {score:.3f}")
+    print(f"    {'overall':15s}: {q['overall']:.3f}")
+
+    lat = summary["latency_ms"]
+    print("\n  [지연] 단일 invoke 기준 (ms)")
+    print(f"    avg={lat['avg']}  p50={lat['p50']}  p95={lat['p95']}")
+    print(f"    min={lat['min']}  max={lat['max']}")
+
+    cost = summary["cost"]
+    print("\n  [비용]")
+    print(
+        f"    avg tokens: prompt={cost['avg_prompt_tokens']}, "
+        f"completion={cost['avg_completion_tokens']}, total={cost['avg_total_tokens']}"
+    )
+    print(f"    avg cost/case:        ${cost['avg_cost_usd']:.6f}")
+    print(f"    projected /1k msgs:   ${cost['projected_cost_per_1k_messages_usd']:.4f}")
+    print(f"    total cost this run:  ${cost['total_cost_usd']:.6f}")
+    print("=" * 60)
+
+
+async def run_evaluation() -> dict:
     """전체 평가를 실행하고 요약을 반환합니다."""
     golden_set = _load_golden_set()
     print(f"Golden QA Set 로드 완료: {len(golden_set)}개 테스트 케이스")
 
-    _init_agent()
+    await _init_agent()
 
     results = []
     for tc in golden_set:
-        result = _evaluate_test_case(tc)
+        result = await _evaluate_test_case(tc)
         results.append(result)
 
     summary = _print_report(results)
 
-    # 결과를 JSON 파일로 저장
+    # 결과를 JSON 파일로 저장 (check_threshold.py 호환을 위해 케이스 리스트 그대로)
     output_path = _BASE_DIR / "eval" / "results.json"
     output_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n상세 결과 저장: {output_path}")
+
+    # 베이스라인 요약(품질+지연+비용)을 별도 파일에 저장
+    baseline = _compute_baseline_summary(results)
+    _print_baseline_summary(baseline)
+    summary_path = _BASE_DIR / "eval" / "baseline-summary.json"
+    summary_path.write_text(json.dumps(baseline, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"베이스라인 요약 저장: {summary_path}")
 
     return summary
 
 
 if __name__ == "__main__":
-    summary = run_evaluation()
+    summary = asyncio.run(run_evaluation())
     sys.exit(0 if summary.get("overall", 0) >= 0.7 else 1)
