@@ -340,14 +340,14 @@ def _compute_baseline_summary(results: list[dict]) -> dict:
     for r in results:
         quality_by_category[r["category"]].append(r["avg_score"])
         all_quality.append(r["avg_score"])
-        if r.get("latency_ms"):
+        if r.get("latency_ms") is not None:
             latencies.append(r["latency_ms"])
         tu = r.get("token_usage")
         if tu:
             prompt_tokens_list.append(tu["prompt_tokens"])
             completion_tokens_list.append(tu["completion_tokens"])
             total_tokens_list.append(tu["total_tokens"])
-        if r.get("cost_usd"):
+        if r.get("cost_usd") is not None:
             costs.append(r["cost_usd"])
 
     avg_cost = sum(costs) / len(costs) if costs else 0.0
