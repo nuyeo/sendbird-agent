@@ -68,7 +68,7 @@ def test_verify_token_rejects_missing_exp() -> None:
 def client() -> Iterator[TestClient]:
     """DB/Redis/RAG를 mock 처리한 TestClient 픽스처."""
     with (
-        patch("app.main.initialize_rag"),
+        patch("app.main.initialize_rag", new_callable=AsyncMock),
         patch("app.main.initialize_redis", new_callable=AsyncMock),
         patch("app.main.close_redis", new_callable=AsyncMock),
         patch("app.main.engine") as mock_engine,
