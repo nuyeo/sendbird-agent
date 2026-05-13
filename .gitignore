@@ -19,6 +19,11 @@ env/
 
 # Eval Results (generated at runtime)
 eval/results.json
+eval/baseline-summary.json
+
+# Load test artifacts (generated at runtime)
+tests/load/tokens.json
+tests/load/result-summary.json
 
 # Database & Logs
 *.db
