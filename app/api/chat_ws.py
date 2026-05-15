@@ -224,12 +224,21 @@ async def chat_websocket(
             bind_request_context(message_id)
 
             # ── 1. 시맨틱 캐시 확인 (LLM 호출 우회) ────────────────────────
-            cached_output = await get_cached_response(user_message)
+            cached_output = await get_cached_response(user_message, user_id=user_id)
             if cached_output is not None:
                 semantic_cache_hits_total.inc()
                 ai_response_total.labels(status="success").inc()
                 logger.info("캐시 히트 응답 반환", user_id=user_id)
                 await websocket.send_json({"type": "ai_response", "message": cached_output})
+                # 캐시 히트도 감사 로그에 남겨 대화 이력을 일관되게 유지한다.
+                await _persist_chat_log(
+                    log_id=message_id,
+                    user_id=user_id,
+                    question=user_message,
+                    answer=cached_output,
+                    latency_ms=0,
+                    token_usage=None,
+                )
                 continue
 
             # ── 2. 일일 토큰 예산 확인 ──────────────────────────────────────
@@ -265,7 +274,7 @@ async def chat_websocket(
 
             # ── 4. 성공 응답을 캐시에 저장 + 토큰 예산 기록 ────────────────
             if not is_error:
-                await set_cached_response(user_message, result["output"])
+                await set_cached_response(user_message, result["output"], user_id=user_id)
                 if token_usage:
                     await record_token_spend(user_id, token_usage.get("total_tokens", 0))
 
