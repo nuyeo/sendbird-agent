@@ -8,14 +8,18 @@ from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
+from app.agent.cache import get_cached_response, set_cached_response
 from app.agent.rag import get_ai_response
 from app.api.auth import verify_token
+from app.api.middleware import is_within_budget, record_token_spend
 from app.config import settings
 from app.observability.logger import bind_request_context, generate_request_id, get_logger
 from app.observability.metrics import (
     ai_response_latency_seconds,
     ai_response_total,
     record_token_usage,
+    semantic_cache_hits_total,
+    token_budget_exceeded_total,
     ws_active_connections,
 )
 from app.storage.database import AsyncSessionLocal
@@ -219,7 +223,29 @@ async def chat_websocket(
             message_id = generate_request_id()
             bind_request_context(message_id)
 
-            # 일회성 세션: 응답은 현재 연결로만 반환 (새 탭/새로고침 = 새 대화)
+            # ── 1. 시맨틱 캐시 확인 (LLM 호출 우회) ────────────────────────
+            cached_output = await get_cached_response(user_message)
+            if cached_output is not None:
+                semantic_cache_hits_total.inc()
+                ai_response_total.labels(status="success").inc()
+                logger.info("캐시 히트 응답 반환", user_id=user_id)
+                await websocket.send_json({"type": "ai_response", "message": cached_output})
+                continue
+
+            # ── 2. 일일 토큰 예산 확인 ──────────────────────────────────────
+            if not await is_within_budget(user_id):
+                token_budget_exceeded_total.inc()
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "message": (
+                            "오늘 사용 가능한 메시지 한도를 초과했습니다. 내일 다시 이용해 주세요."
+                        ),
+                    }
+                )
+                continue
+
+            # ── 3. LLM 호출 ─────────────────────────────────────────────────
             await websocket.send_json({"type": "typing"})
 
             start_time = time.time()
@@ -231,10 +257,17 @@ async def chat_websocket(
             record_token_usage(token_usage)
             # get_ai_response가 LLM 예외를 흡수하고 fallback 메시지를 돌려주므로,
             # 외부 except 블록만으로는 실패를 감지할 수 없다. error 플래그로 분기한다.
-            status_label = "error" if result.get("error") else "success"
+            is_error = result.get("error", False)
+            status_label = "error" if is_error else "success"
             ai_response_total.labels(status=status_label).inc()
 
             logger.info("AI 응답 생성 완료", user_id=user_id, latency_ms=latency_ms)
+
+            # ── 4. 성공 응답을 캐시에 저장 + 토큰 예산 기록 ────────────────
+            if not is_error:
+                await set_cached_response(user_message, result["output"])
+                if token_usage:
+                    await record_token_spend(user_id, token_usage.get("total_tokens", 0))
 
             await _persist_chat_log(
                 log_id=message_id,

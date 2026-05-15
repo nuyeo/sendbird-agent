@@ -10,6 +10,7 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain_community.callbacks import get_openai_callback
 from langchain_community.chat_message_histories import RedisChatMessageHistory
 from langchain_community.document_loaders import TextLoader
+from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -34,19 +35,49 @@ agent_executor_base: AgentExecutor | None = None
 _VECTOR_COLLECTION = "faq"
 
 
-def get_session_history(session_id: str) -> RedisChatMessageHistory:
+class _TrimmedRedisChatMessageHistory(RedisChatMessageHistory):
+    """최신 N개 메시지로 히스토리를 제한해 토큰 선형 증가를 방지합니다.
+
+    Redis에는 전체 이력을 보존하고, LLM에게 전달하는 messages 프로퍼티에서만
+    트리밍을 적용합니다. 이렇게 하면 로그 감사용 전체 이력과 LLM 컨텍스트 제한을
+    독립적으로 관리할 수 있습니다.
+    """
+
+    def __init__(self, session_id: str, url: str, ttl: int, max_messages: int) -> None:
+        """초기화합니다.
+
+        Args:
+            session_id: Redis 키에 사용할 세션 식별자.
+            url: Redis 연결 URL.
+            ttl: 세션 TTL (초).
+            max_messages: LLM에 전달할 최대 메시지 수 (human + ai 합산).
+        """
+        super().__init__(session_id=session_id, url=url, ttl=ttl)
+        self._max_messages = max_messages
+
+    @property
+    def messages(self) -> list[BaseMessage]:
+        """최신 max_messages 개의 메시지만 반환합니다."""
+        all_msgs = super().messages
+        if len(all_msgs) > self._max_messages:
+            return all_msgs[-self._max_messages :]
+        return all_msgs
+
+
+def get_session_history(session_id: str) -> _TrimmedRedisChatMessageHistory:
     """세션 ID에 해당하는 Redis 기반 대화 히스토리를 반환합니다.
 
     Args:
         session_id: 사용자 식별자.
 
     Returns:
-        RedisChatMessageHistory 인스턴스.
+        히스토리 트리밍이 적용된 RedisChatMessageHistory 인스턴스.
     """
-    return RedisChatMessageHistory(
+    return _TrimmedRedisChatMessageHistory(
         session_id=session_id,
         url=settings.redis_url,
         ttl=settings.session_ttl_seconds,
+        max_messages=settings.history_max_messages,
     )
 
 

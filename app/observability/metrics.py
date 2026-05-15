@@ -39,6 +39,18 @@ ai_response_total = Counter(
     labelnames=("status",),
 )
 
+# 시맨틱 캐시 히트 카운터 (Phase D).
+semantic_cache_hits_total = Counter(
+    "semantic_cache_hits_total",
+    "시맨틱 캐시 히트 횟수 (LLM 호출 우회)",
+)
+
+# 일일 토큰 예산 초과 카운터 (Phase D).
+token_budget_exceeded_total = Counter(
+    "token_budget_exceeded_total",
+    "일일 토큰 예산 초과로 거부된 요청 수",
+)
+
 
 def record_token_usage(token_usage: dict[str, int] | None) -> None:
     """OpenAI usage 딕셔너리에서 토큰 사용량을 카운터에 누적합니다.
