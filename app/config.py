@@ -50,6 +50,13 @@ class Settings(BaseSettings):
     # 운영 환경에서는 ingress/LB로 차단하거나 토큰을 설정해 노출을 막는다.
     metrics_bearer_token: str = ""
 
+    # 정확 매칭 시맨틱 캐시 TTL (초). 0이면 캐시 비활성화.
+    semantic_cache_ttl_seconds: int = Field(3600, ge=0)
+    # 사용자별 대화 히스토리 최대 메시지 수 (human + ai 합산). 짝수 권장 (1턴 = 2메시지).
+    history_max_messages: int = Field(20, ge=2)
+    # 사용자별 일일 토큰 한도. 0이면 무제한.
+    token_budget_daily: int = Field(0, ge=0)
+
     # Server
     debug: bool = False
 
