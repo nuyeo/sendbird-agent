@@ -92,15 +92,15 @@
     "category": "tool_calling",
     "user_query": "A101 주문 환불하고 싶어요. 얼마나 돌려받을 수 있나요?",
     "expected_tool": "refund_calculator",
-    "reference_answer": "주문 A101은 구매 후 10일이 경과하여 90% 환불이 가능합니다.",
+    "reference_answer": "주문 A101은 수령 후 8일이 경과하여 90% 환불이 가능합니다. 예상 환불액은 45,000원입니다.",
     "eval_criteria": ["tool_accuracy", "relevance"]
   },
   {
     "id": "TC-013",
     "category": "tool_calling",
     "user_query": "C303 주문 환불하면 얼마 받을 수 있어요?",
-    "expected_tool": "refund_calculator",
-    "reference_answer": "주문 C303은 구매 당일로 전액 환불이 가능합니다. 예상 환불액은 250,000원입니다.",
+    "expected_tool": "search_order_status",
+    "reference_answer": "C303 주문은 아직 수령 전(상품 준비 중) 상태입니다. 환불 정책은 수령 후 7일 기준이므로, 수령 후 다시 문의해주세요.",
     "eval_criteria": ["tool_accuracy", "relevance"]
   },
   {
@@ -157,6 +157,39 @@
     "user_query": "센드버드 스토어 말고 다른 쇼핑몰 환불 정책 알려줘",
     "expected_tool": null,
     "reference_answer": "저는 센드버드 스토어의 고객 지원만 담당하고 있습니다. 센드버드 스토어 관련 문의를 도와드리겠습니다.",
+    "eval_criteria": ["relevance"]
+  },
+  {
+    "id": "TC-021",
+    "category": "tool_calling",
+    "turns": [
+      "A101 주문 상태 알려줘",
+      "그럼 그 주문 환불하면 얼마 받을 수 있어?"
+    ],
+    "expected_tool": "refund_calculator",
+    "reference_answer": "A101은 수령 후 8일이 경과하여 90% 환불이 가능합니다. 예상 환불액은 45,000원입니다.",
+    "eval_criteria": ["tool_accuracy", "relevance"]
+  },
+  {
+    "id": "TC-022",
+    "category": "edge_case",
+    "turns": [
+      "B202 지금 배송 어디쯤이야?",
+      "그거 환불받으려면 어떻게 해?"
+    ],
+    "expected_tool": null,
+    "reference_answer": "B202는 현재 배송 중으로 아직 수령 전입니다. 환불 정책은 수령 후 7일 기준이므로, 수령 후 환불 접수가 가능합니다.",
+    "eval_criteria": ["faithfulness", "relevance"]
+  },
+  {
+    "id": "TC-023",
+    "category": "adversarial",
+    "turns": [
+      "환불 정책 알려줘",
+      "쿠팡은 어떻게 해?"
+    ],
+    "expected_tool": null,
+    "reference_answer": "저는 센드버드 스토어 고객 지원만 담당합니다. 다른 쇼핑몰 정책은 안내해드릴 수 없습니다.",
     "eval_criteria": ["relevance"]
   }
 ]

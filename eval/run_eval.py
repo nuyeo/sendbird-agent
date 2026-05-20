@@ -98,25 +98,17 @@ async def _init_agent() -> None:
         await initialize_rag()
 
 
-async def _call_agent(user_query: str) -> dict:
-    """에이전트를 호출하고 응답, 도구 호출, latency, 토큰 사용량, 비용을 반환합니다.
+async def _invoke_once(user_query: str, session_id: str | None) -> dict:
+    """한 번의 invoke를 수행하고 결과/도구 호출/지연/비용을 반환합니다.
 
-    search_order_status / cancel_order 도구가 async로 정의되어 있으므로 반드시
-    ainvoke 경로로 호출해야 한다 (sync invoke는 StructuredTool에서 NotImplementedError).
-
-    Returns:
-        {
-            "output": str,
-            "tools_called": list[str],
-            "latency_ms": int,
-            "token_usage": dict | None,
-            "cost_usd": float,
-        }
+    session_id가 None이면 대화 히스토리 없는 base executor로 호출하고,
+    값이 있으면 RunnableWithMessageHistory로 감싼 executor로 호출해 같은
+    session_id로 호출이 누적되도록 한다 (멀티턴 평가용).
     """
-    from app.agent.rag import agent_executor_base
+    from app.agent.rag import agent_executor, agent_executor_base
     from app.config import settings
 
-    if agent_executor_base is None:
+    if agent_executor_base is None or agent_executor is None:
         return {
             "output": "에이전트 초기화 실패",
             "tools_called": [],
@@ -125,18 +117,24 @@ async def _call_agent(user_query: str) -> dict:
             "cost_usd": 0.0,
         }
 
-    # return_intermediate_steps를 임시 활성화하여 tool 호출 정보를 얻음
+    # return_intermediate_steps는 base executor의 속성. 래핑된 executor도
+    # 호출 시 동일 base를 사용하므로 base에서 토글하면 양쪽 경로 모두 반영된다.
     original_flag = agent_executor_base.return_intermediate_steps
     try:
         agent_executor_base.return_intermediate_steps = True
         start = time.perf_counter()
         with get_openai_callback() as cb:
-            result = await agent_executor_base.ainvoke({"input": user_query})
+            if session_id is None:
+                result = await agent_executor_base.ainvoke({"input": user_query})
+            else:
+                result = await agent_executor.ainvoke(
+                    {"input": user_query},
+                    config={"configurable": {"session_id": session_id}},
+                )
         latency_ms = round((time.perf_counter() - start) * 1000)
     finally:
         agent_executor_base.return_intermediate_steps = original_flag
 
-    # intermediate_steps에서 호출된 tool 이름 추출
     tools_called = []
     for step in result.get("intermediate_steps", []):
         if isinstance(step, (list, tuple)) and len(step) >= 1:
@@ -161,6 +159,61 @@ async def _call_agent(user_query: str) -> dict:
         "token_usage": token_usage,
         "cost_usd": cost_usd,
     }
+
+
+async def _call_agent(user_query: str) -> dict:
+    """단일턴 호출 (기존 시그니처 유지)."""
+    return await _invoke_once(user_query, session_id=None)
+
+
+async def _call_agent_multiturn(turns: list[str], case_id: str) -> dict:
+    """멀티턴 호출. 같은 session_id로 순차 호출하고 최종 턴 결과를 점수화 대상으로 반환합니다.
+
+    누적 token/cost는 전 턴 합산, latency는 마지막 턴 기준으로 반환한다. tools_called는
+    모든 턴의 합집합이 아닌 마지막 턴 호출만 — 최종 응답이 어떤 도구로 만들어졌는지가
+    멀티턴 평가의 핵심이기 때문이다. 단, expected_tool이 이전 턴 정보를 활용해 도구를
+    호출하지 않고 답변하는 시나리오(TC-022 등)에서는 tool_accuracy를 부여하지 않는
+    eval_criteria 구성으로 보완한다.
+    """
+    import uuid
+
+    session_id = f"eval-{case_id}-{uuid.uuid4().hex[:8]}"
+    last_result: dict | None = None
+    cumulative_prompt = 0
+    cumulative_completion = 0
+    cumulative_total = 0
+    cumulative_cost = 0.0
+
+    for i, turn in enumerate(turns):
+        print(f"  └ turn {i + 1}/{len(turns)}: {turn[:50]}")
+        last_result = await _invoke_once(turn, session_id=session_id)
+        tu = last_result.get("token_usage")
+        if tu:
+            cumulative_prompt += tu["prompt_tokens"]
+            cumulative_completion += tu["completion_tokens"]
+            cumulative_total += tu["total_tokens"]
+        cumulative_cost += last_result.get("cost_usd", 0.0)
+
+    if last_result is None:
+        return {
+            "output": "",
+            "tools_called": [],
+            "latency_ms": 0,
+            "token_usage": None,
+            "cost_usd": 0.0,
+        }
+
+    last_result["token_usage"] = (
+        {
+            "prompt_tokens": cumulative_prompt,
+            "completion_tokens": cumulative_completion,
+            "total_tokens": cumulative_total,
+        }
+        if cumulative_total > 0
+        else None
+    )
+    last_result["cost_usd"] = cumulative_cost
+    return last_result
 
 
 def _judge_tool_accuracy(expected_tool: str | None, tools_called: list[str]) -> float:
@@ -233,12 +286,28 @@ def _judge_with_llm(
 
 
 async def _evaluate_test_case(tc: dict) -> dict:
-    """단일 테스트 케이스를 평가합니다."""
+    """단일 또는 멀티턴 테스트 케이스를 평가합니다.
+
+    멀티턴 케이스(`turns` 필드 보유)는 같은 session_id로 순차 호출 후 마지막 턴을
+    점수화 대상으로 삼는다. 단일턴 케이스는 기존 동작 그대로.
+    """
+    is_multiturn = "turns" in tc and isinstance(tc.get("turns"), list)
+    if is_multiturn:
+        display_query = " | ".join(tc["turns"])
+    else:
+        display_query = tc.get("user_query", "")
+
     print(f"\n{'=' * 60}")
-    print(f"[{tc['id']}] ({tc['category']}) {tc['user_query'][:50]}")
+    print(f"[{tc['id']}] ({tc['category']}){' [multiturn]' if is_multiturn else ''} {display_query[:60]}")
     print(f"{'=' * 60}")
 
-    result = await _call_agent(tc["user_query"])
+    if is_multiturn:
+        result = await _call_agent_multiturn(tc["turns"], tc["id"])
+        scoring_query = tc["turns"][-1]
+    else:
+        result = await _call_agent(tc["user_query"])
+        scoring_query = tc["user_query"]
+
     actual_output = result["output"]
     tools_called = result["tools_called"]
     latency_ms = result["latency_ms"]
@@ -259,7 +328,7 @@ async def _evaluate_test_case(tc: dict) -> dict:
     llm_criteria = [c for c in tc["eval_criteria"] if c != "tool_accuracy"]
     if llm_criteria and tc.get("reference_answer"):
         llm_scores = _judge_with_llm(
-            tc["user_query"],
+            scoring_query,
             tc["reference_answer"],
             actual_output,
             llm_criteria,
@@ -272,7 +341,7 @@ async def _evaluate_test_case(tc: dict) -> dict:
     return {
         "id": tc["id"],
         "category": tc["category"],
-        "user_query": tc["user_query"],
+        "user_query": display_query,
         "actual_output": actual_output,
         "tools_called": tools_called,
         "scores": scores,

@@ -48,6 +48,7 @@ class Order(Base):
         nullable=False,
     )
     purchased_at: Mapped[date] = mapped_column(Date, nullable=False)
+    delivered_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
