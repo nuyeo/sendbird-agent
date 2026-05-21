@@ -297,8 +297,9 @@ async def _evaluate_test_case(tc: dict) -> dict:
     else:
         display_query = tc.get("user_query", "")
 
+    multiturn_tag = " [multiturn]" if is_multiturn else ""
     print(f"\n{'=' * 60}")
-    print(f"[{tc['id']}] ({tc['category']}){' [multiturn]' if is_multiturn else ''} {display_query[:60]}")
+    print(f"[{tc['id']}] ({tc['category']}){multiturn_tag} {display_query[:60]}")
     print(f"{'=' * 60}")
 
     if is_multiturn:

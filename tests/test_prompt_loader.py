@@ -11,7 +11,7 @@ from app.prompt.loader import PromptConfig, load_prompt
 def test_load_prompt_cs_agent_v1() -> None:
     """cs_agent_v1 프롬프트가 정상적으로 로드되는지 확인."""
     config = load_prompt("cs_agent_v1")
-    assert config.version == "1.0.0"
+    assert config.version == "1.1.0"
     assert config.description
     assert "Customer Support Agent" in config.system_prompt
     assert "Online Store" in config.system_prompt
