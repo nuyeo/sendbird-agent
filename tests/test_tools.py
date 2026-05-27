@@ -11,22 +11,22 @@ from app.agent.tools import refund_calculator, search_order_status
 
 
 def test_refund_calculator_full_refund() -> None:
-    """7일 이내 전액 환불 테스트."""
-    result = refund_calculator.invoke({"price": 10000, "days_passed": 3})
+    """수령 후 7일 이내 전액 환불 테스트."""
+    result = refund_calculator.invoke({"price": 10000, "days_since_delivery": 3})
     assert "전액 환불" in result
     assert "10000원" in result
 
 
 def test_refund_calculator_partial_refund() -> None:
-    """14일 이내 90% 환불 테스트."""
-    result = refund_calculator.invoke({"price": 10000, "days_passed": 10})
+    """수령 후 8~14일 90% 환불 테스트."""
+    result = refund_calculator.invoke({"price": 10000, "days_since_delivery": 10})
     assert "90%" in result
     assert "9000원" in result
 
 
 def test_refund_calculator_expired() -> None:
-    """기간 만료 테스트."""
-    result = refund_calculator.invoke({"price": 10000, "days_passed": 15})
+    """수령 후 14일 초과 환불 불가 테스트."""
+    result = refund_calculator.invoke({"price": 10000, "days_since_delivery": 15})
     assert "불가능" in result
 
 
@@ -42,12 +42,14 @@ async def test_search_order_exists(mock_get: AsyncMock) -> None:
         item="무선 키보드",
         price=50000,
         purchased_at=date(2025, 1, 1),
+        delivered_at=date(2025, 1, 3),
     )
     mock_get.return_value = mock_order
 
     result = await search_order_status.ainvoke({"order_id": "A101"})
     assert "주문번호: A101" in result
     assert "배송 완료" in result
+    assert "days_since_delivery=" in result
 
 
 @pytest.mark.asyncio
