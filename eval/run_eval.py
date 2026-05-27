@@ -291,9 +291,12 @@ async def _evaluate_test_case(tc: dict) -> dict:
     멀티턴 케이스(`turns` 필드 보유)는 같은 session_id로 순차 호출 후 마지막 턴을
     점수화 대상으로 삼는다. 단일턴 케이스는 기존 동작 그대로.
     """
-    is_multiturn = "turns" in tc and isinstance(tc.get("turns"), list)
+    turns = tc.get("turns")
+    is_multiturn = isinstance(turns, list) and len(turns) > 0
+    if "turns" in tc and not is_multiturn:
+        raise ValueError(f"Invalid multiturn test case: {tc.get('id')} (empty or non-list turns)")
     if is_multiturn:
-        display_query = " | ".join(tc["turns"])
+        display_query = " | ".join(turns)
     else:
         display_query = tc.get("user_query", "")
 
@@ -303,8 +306,10 @@ async def _evaluate_test_case(tc: dict) -> dict:
     print(f"{'=' * 60}")
 
     if is_multiturn:
-        result = await _call_agent_multiturn(tc["turns"], tc["id"])
-        scoring_query = tc["turns"][-1]
+        result = await _call_agent_multiturn(turns, tc["id"])
+        # 멀티턴 평가는 단일 마지막 턴만 넘기면 지시어/대명사 기반 후속 질문의
+        # 관련성 점수가 흔들리므로, 전체 대화 흐름(display_query)을 Judge 입력으로 사용한다.
+        scoring_query = display_query
     else:
         result = await _call_agent(tc["user_query"])
         scoring_query = tc["user_query"]

@@ -42,12 +42,14 @@ async def test_search_order_exists(mock_get: AsyncMock) -> None:
         item="무선 키보드",
         price=50000,
         purchased_at=date(2025, 1, 1),
+        delivered_at=date(2025, 1, 3),
     )
     mock_get.return_value = mock_order
 
     result = await search_order_status.ainvoke({"order_id": "A101"})
     assert "주문번호: A101" in result
     assert "배송 완료" in result
+    assert "days_since_delivery=" in result
 
 
 @pytest.mark.asyncio
