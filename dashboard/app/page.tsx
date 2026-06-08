@@ -34,9 +34,14 @@ export default function Home() {
   };
 
   useEffect(() => {
-    fetchLogs();
+    const initialFetch = window.setTimeout(() => {
+      void fetchLogs();
+    }, 0);
     const interval = setInterval(fetchLogs, 2000);
-    return () => clearInterval(interval);
+    return () => {
+      window.clearTimeout(initialFetch);
+      clearInterval(interval);
+    };
   }, []);
 
   const sendFeedback = async (id: string, type: "up" | "down") => {
